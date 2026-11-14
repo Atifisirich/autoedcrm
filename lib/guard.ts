@@ -23,8 +23,8 @@ export async function findEnquiry(ctx: Ctx, id: string): Promise<Row> {
   return e;
 }
 
-/** One-line confirmation shown as a toast after the next render. */
-export async function flash(message: string, kind: "ok" | "error" = "ok") {
+/** One-line confirmation shown as a toast after the next render. "keep" stays until dismissed (one-time secrets). */
+export async function flash(message: string, kind: "ok" | "error" | "keep" = "ok") {
   (await cookies()).set("aed_flash", encodeURIComponent(JSON.stringify({ message, kind })), { path: "/", maxAge: 20 });
 }
 

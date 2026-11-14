@@ -25,7 +25,7 @@ export async function createTenantAction(fd: FormData) {
   const password = "Welcome-" + Math.random().toString(36).slice(2, 8);
   const { tenant } = await createTenant({ name: str(fd, "name"), subdomain, plan: str(fd, "plan") || "growth", pack: PACKS[str(fd, "pack")] ? str(fd, "pack") : "cbse_day", region: str(fd, "region") || "in-south", adminName: str(fd, "adminName") || "School admin", adminEmail: email, adminPassword: password, branchName: str(fd, "branchName") || "Main campus", city: str(fd, "city") });
   await audit(null, who(u), "platform", "tenant", tenant.id, `Created tenant ${tenant.name} (${subdomain}) on ${tenant.plan}`);
-  await flash(`Tenant created with its starter pack. First admin: ${email}, temporary password: ${password}`);
+  await flash(`Tenant created with its starter pack. First admin: ${email}, temporary password: ${password}`, "keep");
   redirect("/platform/" + tenant.id);
 }
 

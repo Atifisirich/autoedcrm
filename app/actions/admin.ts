@@ -124,7 +124,7 @@ export async function saveUser(fd: FormData) {
     const temp = crypto.randomBytes(6).toString("base64url");
     const u = await insert("users", { tenant_id: ctx.tenantId, email, password_hash: await hashPassword(temp), ...data });
     await audit(ctx.tenantId, actorOf(ctx), "permission", "user", u.id, `Invited ${data.name} as ${role.name}`);
-    await flash(`${data.name} added. Temporary password: ${temp} (share it securely; email invitations need the email channel connected).`);
+    await flash(`${data.name} added. Temporary password: ${temp} (share it securely; email invitations need the email channel connected).`, "keep");
   }
   done();
 }
@@ -146,7 +146,7 @@ export async function userAction(fd: FormData) {
     const temp = crypto.randomBytes(6).toString("base64url");
     await update("users", ctx.tenantId, id, { password_hash: await hashPassword(temp) });
     await q("delete from sessions where user_id=$1", [id]);
-    await flash(`New temporary password for ${u.name}: ${temp}`);
+    await flash(`New temporary password for ${u.name}: ${temp}`, "keep");
   }
   await audit(ctx.tenantId, actorOf(ctx), "permission", "user", id, `User ${u.name}: ${what}`);
   done();
@@ -331,7 +331,7 @@ export async function createApiKey(fd: FormData) {
   const key = "aed_" + crypto.randomBytes(24).toString("base64url");
   await insert("api_keys", { tenant_id: ctx.tenantId, name: str(fd, "name") || "API key", key_hash: hashKey(key), key_prefix: key.slice(0, 10), source_id: str(fd, "source_id") || null });
   await log(ctx, "api_key", `Created API key "${str(fd, "name")}"`);
-  await flash(`Copy this key now; it is not shown again: ${key}`);
+  await flash(`Copy this key now; it is not shown again: ${key}`, "keep");
   done();
 }
 
@@ -345,7 +345,7 @@ export async function integrationAction(fd: FormData) {
     if (!/^https:\/\//.test(url)) return flash("Webhook URLs must start with https://", "error");
     const secret = crypto.randomBytes(16).toString("hex");
     await insert("webhooks", { tenant_id: ctx.tenantId, url, secret, events: [] });
-    await flash(`Webhook added. Signing secret (shown once): ${secret}`);
+    await flash(`Webhook added. Signing secret (shown once): ${secret}`, "keep");
   }
   await log(ctx, "integration", `Integration change: ${what}`);
   done();

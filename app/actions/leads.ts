@@ -4,7 +4,7 @@ import { insert, one, q } from "@/lib/db";
 import { addTask, audit, captureEnquiry, changeStage, logActivity, notify, renderTemplate, sendMessage, getEnquiry } from "@/lib/core";
 import { actorOf, findEnquiry, flash, guard, str } from "@/lib/guard";
 import { leadIds, type SP } from "@/lib/leads";
-import { canCreateLeads, canEditLeads, canMessage, has, lvl } from "@/lib/perm";
+import { canCreateLeads, canEditLeads, canMessage, has, leadScope, lvl } from "@/lib/perm";
 import { parseLocal } from "@/lib/fmt";
 import { mergeVars } from "@/lib/workflows";
 
@@ -19,14 +19,17 @@ export async function quickAdd(_: any, fd: FormData) {
       studentName: str(fd, "studentName"), guardianName: str(fd, "guardianName"), mobile: str(fd, "mobile"), branchId, yearId: ctx.yearId, grade: str(fd, "grade") || undefined, board: str(fd, "board") || undefined,
       sourceId: str(fd, "sourceId") || undefined, heardAbout: str(fd, "heardAbout") || undefined, note: str(fd, "note") || undefined, dob: str(fd, "dob") || undefined,
       consent: { source: fd.get("consent") ? "Verbal consent recorded by " + ctx.user.name : "Not recorded" },
+      preferOwnerId: leadScope(ctx.perms) === "own" ? ctx.user.id : undefined,
     },
     actorOf(ctx),
   );
   if (!res.ok) return res;
+  // Someone who only sees their own records cannot open a family that belongs to a colleague.
+  const canOpen = leadScope(ctx.perms) !== "own" || res.ownerId === ctx.user.id;
   const what = res.status === "re_enquiry" ? `Existing family: re-enquiry added. Owner ${res.ownerName} has been alerted.` : res.status === "sibling_added" ? `Sibling added to the existing household. Owner: ${res.ownerName}.` : `Enquiry saved and assigned to ${res.ownerName}.`;
   await flash(what);
   revalidatePath("/", "layout");
-  return res;
+  return { ...res, canOpen };
 }
 
 /** Stage move from the Kanban board or the 360 page. Returns what is missing instead of failing silently. */

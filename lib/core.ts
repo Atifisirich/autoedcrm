@@ -299,6 +299,8 @@ export type CaptureInput = {
   branchId: string; yearId?: string; board?: string; grade?: string; locality?: string; currentSchool?: string;
   sourceId?: string; channel?: string; source?: string; campaign?: string; utm?: Row; heardAbout?: string;
   consent?: { source: string; wording?: string }; note?: string; custom?: Row; asProspect?: boolean; tags?: string[];
+  /** Set when the person entering the lead should own it (a counsellor adding their own enquiry). Sticky family owners still win. */
+  preferOwnerId?: string;
 };
 export type CaptureResult = { ok: true; status: "created" | "sibling_added" | "re_enquiry"; householdId: string; enquiryId: string; ownerId: string; ownerName: string } | { ok: false; error: string };
 
@@ -353,7 +355,11 @@ export async function captureEnquiry(tenantId: string, input: CaptureInput, acto
   async function createEnquiry(householdId: string, studentId: string) {
     const stage = await stageByName(tenantId, input.asProspect ? "New data" : "New");
     if (!stage) throw new Error("Pipeline has no starting stage");
-    const owner = await assignOwner(tenantId, { branchId: branch!.id, board: input.board, grade: input.grade, channel, householdId: existing ? householdId : null });
+    let owner = await assignOwner(tenantId, { branchId: branch!.id, board: input.board, grade: input.grade, channel, householdId: existing ? householdId : null });
+    if (input.preferOwnerId && !owner.reason.startsWith("Sticky")) {
+      const self = await one("select id, name from users where tenant_id=$1 and id=$2 and status='active'", [tenantId, input.preferOwnerId]);
+      if (self) owner = { ownerId: self.id, ownerName: self.name, reason: "Added by the counsellor themselves" };
+    }
     const e = await insert("enquiries", { tenant_id: tenantId, household_id: householdId, student_id: studentId, branch_id: branch!.id, year_id: year!.id, board: input.board ?? branch!.boards?.[0] ?? null, grade: input.grade ?? null, stage_id: stage.id, owner_id: owner.ownerId, custom: input.custom ?? {}, tags: input.tags ?? [] });
     await touch(e.id);
     await logActivity(tenantId, { householdId, enquiryId: e.id, type: "touch", actorId: actor?.id, outcome: "created", content: `Enquiry created from ${sourceName} (${channel}). Assigned to ${owner.ownerName}: ${owner.reason}.` + (input.note ? ` Note: ${input.note}` : "") });

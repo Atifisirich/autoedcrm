@@ -221,6 +221,8 @@ export async function seedDemo() {
     }
     if (reached >= 1 && !["New", "Contact attempted"].includes(stageName)) {
       await act("call", "connected", pick(["Spoke to the parent. Interested in a campus visit; asked about transport routes.", "Parent wants fee details and timings. Shared brochure.", "Discussed curriculum and class size. Will discuss with spouse."]), 0.15);
+      const doneAt = ago(opts.daysBack * 0.8);
+      await insert("tasks", { tenant_id: t, enquiry_id: e.id, household_id: hh.id, title: "First call to the parent", due_at: new Date(doneAt.getTime() + (r() < 0.85 ? 2 : -30) * 3600e3), owner_id: owner.id, status: "done", outcome: "Spoke to parent", completed_at: doneAt });
       if (r() < 0.5) await act("note", null, pick(["Mother is the decision maker. Prefers WhatsApp after 6 pm.", "Comparing with one other school nearby.", "Elder cousin studies here."]), 0.2);
     }
     if (reached >= 2 || stageName === "Visit scheduled") {

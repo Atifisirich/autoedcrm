@@ -24,12 +24,22 @@ export function Toast() {
       const m = document.cookie.match(/(?:^|; )aed_flash=([^;]+)/);
       if (!m) return;
       document.cookie = "aed_flash=; path=/; max-age=0";
-      try { setMsg(JSON.parse(decodeURIComponent(decodeURIComponent(m[1])))); } catch { /* ignore a malformed cookie */ }
-      setTimeout(() => setMsg(null), 6000);
+      try {
+        const m2 = JSON.parse(decodeURIComponent(decodeURIComponent(m[1])));
+        setMsg(m2);
+        if (m2.kind !== "keep") setTimeout(() => setMsg(null), 6000);
+      } catch { /* ignore a malformed cookie */ }
     }, 400);
     return () => clearInterval(t);
   }, []);
   if (!msg) return null;
+  if (msg.kind === "keep")
+    return (
+      <div role="alertdialog" aria-label="Important" className="fixed inset-x-0 bottom-4 z-50 mx-auto w-fit max-w-2xl rounded-md bg-slate-900 px-4 py-3 text-sm text-white shadow-lg">
+        <p className="select-all break-all font-medium">{msg.message}</p>
+        <button onClick={() => setMsg(null)} className="mt-2 rounded bg-white px-2.5 py-1 text-xs font-semibold text-slate-900">I have copied it</button>
+      </div>
+    );
   return (
     <div role="status" className={`fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md px-4 py-2.5 text-sm font-medium text-white shadow-lg ${msg.kind === "error" ? "bg-rose-700" : "bg-slate-900"}`}>
       {msg.kind === "error" ? "⚠ " : "✓ "}{msg.message}
@@ -81,7 +91,7 @@ export function QuickAdd({ data, open, onClose }: { data: QuickAddData; open: bo
   const ref = useRef<HTMLDialogElement>(null);
   useEffect(() => { if (open) ref.current?.showModal(); else ref.current?.close(); }, [open]);
   useEffect(() => {
-    if (state?.ok) { onClose(); setMobile(""); router.push(`/households/${state.householdId}?e=${state.enquiryId}`); }
+    if (state?.ok) { onClose(); setMobile(""); if (state.canOpen) router.push(`/households/${state.householdId}?e=${state.enquiryId}`); else router.refresh(); }
   }, [state]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <dialog ref={ref} onClose={onClose} className="m-0 ml-auto h-full max-h-full w-full max-w-md bg-white p-0 shadow-xl">

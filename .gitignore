@@ -5,3 +5,6 @@ node_modules
 .data
 next-env.d.ts
 *.tsbuildinfo
+
+# Written by scripts/e2e.js during a run
+e2e-import.csv

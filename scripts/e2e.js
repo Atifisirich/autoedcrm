@@ -212,7 +212,7 @@ const settle = (page) => page.waitForLoadState("networkidle");
   ok("After approval support can view as a user, with a visible banner", (await text(s)).includes("AutoED support session"));
   await a.reload({ waitUntil: "networkidle" });
   await a.click("button:has-text('Revoke now')");
-  await settle(a);
+  await a.waitForSelector("button:has-text('Revoke now')", { state: "detached" });
   await s.goto(BASE + "/leads");
   ok("Revoking ends the support session immediately", !s.url().includes("/leads"), s.url());
   await a.goto(BASE + "/admin/audit?action=support", { waitUntil: "networkidle" });

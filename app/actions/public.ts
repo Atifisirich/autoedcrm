@@ -1,5 +1,6 @@
 "use server";
 // Parent-facing actions. No session: each is authorised by an unguessable form slug or record token.
+import { revalidatePath } from "next/cache";
 import { one, q } from "@/lib/db";
 import { captureEnquiry, logActivity } from "@/lib/core";
 import { APPLICATION_SECTIONS, saveApplication, settlePayment, startApplication } from "@/lib/admissions";
@@ -36,7 +37,10 @@ export async function parentApplication(_: any, fd: FormData): Promise<{ ok: boo
   if (!e) return { ok: false, error: "This link is not valid any more. Please ask the school for a new one." };
   await startApplication(e.tenant_id, e.id, null);
   const answers = Object.fromEntries(APPLICATION_SECTIONS.flatMap((s) => s.fields).filter((f) => fd.has(f.key)).map((f) => [f.key, str(fd, f.key)]));
-  return saveApplication(e.tenant_id, e.id, answers, { submit: fd.get("submit") === "1", declaration: fd.get("declaration") === "on" }, null);
+  const res = await saveApplication(e.tenant_id, e.id, answers, { submit: fd.get("submit") === "1", declaration: fd.get("declaration") === "on" }, null);
+  // Re-render so the parent sees the saved answers, or the submitted state, straight away.
+  if (res.ok) revalidatePath("/apply/" + str(fd, "token"));
+  return res;
 }
 
 /**
@@ -48,7 +52,6 @@ export async function demoPay(fd: FormData) {
   const p = await one("select p.id, p.tenant_id, p.enquiry_id, p.status from payments p where p.token=$1", [str(fd, "token")]);
   if (!p || p.status === "paid") return;
   await settlePayment(p.tenant_id, p.id, fd.get("result") === "success", null, "DEMO-" + Date.now());
-  const { revalidatePath } = await import("next/cache");
   revalidatePath("/pay/" + str(fd, "token"));
 }
 
@@ -58,6 +61,5 @@ export async function parentUpload(fd: FormData) {
   if (!e || !file?.name) return;
   await q("update documents set status='uploaded', file_name=$3, reject_reason=null, updated_at=now() where tenant_id=$1 and id=$2 and enquiry_id=$4 and status in ('pending','rejected')", [e.tenant_id, str(fd, "docId"), file.name, e.id]);
   await logActivity(e.tenant_id, { householdId: e.household_id, enquiryId: e.id, type: "document", content: `Parent sent a document (${file.name}).` });
-  const { revalidatePath } = await import("next/cache");
   revalidatePath("/apply/" + str(fd, "token"));
 }

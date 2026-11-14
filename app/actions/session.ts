@@ -8,6 +8,7 @@ import { flash, guard, str } from "@/lib/guard";
 
 export async function loginAction(_: any, fd: FormData) {
   const dest = await login(str(fd, "email"), str(fd, "password"));
+  if (dest === "locked") return { error: "Too many wrong attempts. Wait ten minutes and try again, or ask your admin to reset the password." };
   if (!dest) return { error: "That email and password do not match an active account." };
   redirect(dest);
 }

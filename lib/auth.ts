@@ -24,9 +24,19 @@ export type Ctx = {
   impersonatorId: string | null;
 };
 
+const fails = ((globalThis as any).__aedFails ??= new Map<string, { n: number; t: number }>()) as Map<string, { n: number; t: number }>;
+
+/** Returns the landing path, null for bad credentials, or "locked" after five failures in ten minutes. */
 export async function login(email: string, password: string): Promise<string | null> {
-  const u = await one("select * from users where lower(email)=lower($1) and status='active'", [email.trim()]);
-  if (!u || !(await bcrypt.compare(password, u.password_hash))) return null;
+  const key = email.trim().toLowerCase();
+  const f = fails.get(key);
+  if (f && f.n >= 5 && Date.now() - f.t < 10 * 60000) return "locked";
+  const u = await one("select * from users where lower(email)=$1 and status='active'", [key]);
+  if (!u || !(await bcrypt.compare(password, u.password_hash))) {
+    fails.set(key, { n: f && Date.now() - f.t < 10 * 60000 ? f.n + 1 : 1, t: Date.now() });
+    return null;
+  }
+  fails.delete(key);
   await startSession(u.id);
   await q("update users set last_login=now() where id=$1", [u.id]);
   return u.platform_role ? "/platform" : "/";

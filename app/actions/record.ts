@@ -106,6 +106,11 @@ export async function sendMsg(fd: FormData) {
     channel = tpl.channel;
   }
   if (!body) return flash("Write a message or pick a template.", "error");
+  // WhatsApp rule: free text is only allowed within 24 hours of the parent's last message.
+  if (channel === "whatsapp" && !str(fd, "templateId") && fd.get("note") !== "on") {
+    const last = await one("select max(created_at) as at from messages where tenant_id=$1 and household_id=$2 and channel='whatsapp' and direction='in'", [ctx.tenantId, e.household_id]);
+    if (!last?.at || Date.now() - new Date(last.at).getTime() > 24 * 3600e3) return flash("WhatsApp allows free text only within 24 hours of the parent's last message. Pick an approved template instead.", "error");
+  }
   if (fd.get("note") === "on") {
     await insert("messages", { tenant_id: ctx.tenantId, household_id: e.household_id, enquiry_id: e.id, channel, direction: "out", body, status: "note", is_note: true, sender_id: ctx.user.id, read: true });
   } else {
@@ -128,6 +133,7 @@ export async function inboxStatus(fd: FormData) {
 /** Stands in for the provider webhook so the inbox, opt-out and stop-on-reply rules can be tried without a live number. */
 export async function simulateReply(fd: FormData) {
   const ctx = await guard("leads");
+  if (process.env.DATABASE_URL && process.env.DEMO_PAYMENTS !== "1") return flash("Simulated replies are only available in demo mode.", "error");
   await receiveMessage(ctx.tenantId, str(fd, "householdId"), "whatsapp", str(fd, "body") || "Thank you, please call me after 5 pm.");
   await flash("Simulated parent reply received.");
   done();

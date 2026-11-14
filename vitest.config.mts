@@ -1,6 +1,5 @@
 import { defineConfig } from "vitest/config";
-import path from "node:path";
 export default defineConfig({
   test: { testTimeout: 60000, hookTimeout: 120000, pool: "forks", fileParallelism: false },
-  resolve: { alias: { "@": path.resolve(__dirname) } },
+  resolve: { alias: { "@": import.meta.dirname } },
 });

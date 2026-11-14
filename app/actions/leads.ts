@@ -106,3 +106,20 @@ export async function deleteView(fd: FormData) {
   await q("delete from saved_views where tenant_id=$1 and id=$2 and user_id=$3", [ctx.tenantId, str(fd, "id"), ctx.user.id]);
   revalidatePath("/leads");
 }
+
+/** Front-desk walk-in. An existing mobile adds a walk-in touch and a task for the owner; it never creates a second household (CAP-02). */
+export async function walkIn(_: any, fd: FormData) {
+  const ctx = await guard("leads");
+  if (!canCreateLeads(ctx.perms)) return { ok: false as const, error: "Your role cannot add walk-ins." };
+  const res = await captureEnquiry(
+    ctx.tenantId,
+    { studentName: str(fd, "studentName"), guardianName: str(fd, "guardianName"), mobile: str(fd, "mobile"), branchId: str(fd, "branchId"), yearId: ctx.yearId, grade: str(fd, "grade"), sourceId: str(fd, "sourceId") || undefined, channel: "Walk-in", source: "Front desk walk-in", consent: { source: fd.get("consent") ? "Verbal consent at front desk" : "Not recorded" } },
+    actorOf(ctx),
+  );
+  if (!res.ok) return res;
+  await addTask(ctx.tenantId, { enquiryId: res.enquiryId, type: "visit", title: "Walk-in waiting at the front desk", dueAt: new Date(), priority: "high" });
+  await notify(ctx.tenantId, res.ownerId, "due", "Walk-in at the front desk: " + str(fd, "studentName"), "/households/" + res.householdId + "?e=" + res.enquiryId);
+  const n = await one("select count(*)::int n from source_touches where tenant_id=$1 and channel='Walk-in' and (created_at at time zone 'Asia/Kolkata')::date=(now() at time zone 'Asia/Kolkata')::date", [ctx.tenantId]);
+  revalidatePath("/", "layout");
+  return { ...res, token: "W-" + String(n!.n).padStart(2, "0"), message: res.status === "re_enquiry" ? "Existing family. Walk-in added to their record." : res.status === "sibling_added" ? "Existing family. New child added to their household." : "New enquiry saved." };
+}

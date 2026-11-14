@@ -529,11 +529,11 @@ create table if not exists support_access (
 );
 
 -- When hosted on Supabase the public schema is reachable through the auto-generated API.
--- The app talks to Postgres directly, so lock every table down for API roles.
+-- The app talks to Postgres directly, so lock every table it owns down for API roles.
 do $$
 declare t record;
 begin
-  for t in select tablename from pg_tables where schemaname = 'public' loop
-    execute format('alter table public.%I enable row level security', t.tablename);
+  for t in select tablename from pg_tables where schemaname = current_schema() and tableowner = current_user loop
+    execute format('alter table %I.%I enable row level security', current_schema(), t.tablename);
   end loop;
 end $$;

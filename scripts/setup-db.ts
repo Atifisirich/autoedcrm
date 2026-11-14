@@ -1,5 +1,6 @@
 // Creates the schema (and demo data when SEED_DEMO=1 or no DATABASE_URL) and prints a summary.
 import { q, ready } from "../lib/db";
+process.env.FORCE_SCHEMA = "1";
 (async () => {
   const t0 = Date.now();
   await ready();

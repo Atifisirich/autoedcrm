@@ -65,3 +65,35 @@ export const canPublishWorkflows = (p: Perms) => ["F", "T"].includes(lvl(p, "wor
 export const canEditTemplates = (p: Perms) => ["F", "T"].includes(lvl(p, "templates"));
 export const isFullAdmin = (p: Perms) => lvl(p, "admin") === "F";
 export const mask = (v: string | null | undefined) => (v ? "••••••" : "");
+
+export const ADMIN_SECTIONS: [string, string, string][] = [
+  ["org", "Organisation and years", "Profile, branches, academic years, rollover, seats"],
+  ["users", "Users", "Invite, pause, roles, branches, capacity, leave"],
+  ["roles", "Roles and permissions", "The permission matrix; clone and edit roles"],
+  ["fields", "Fields", "Custom fields and dropdown values"],
+  ["pipeline", "Pipeline", "Phases, stages, order, SLA, probability"],
+  ["sources", "Sources", "Channels, sources and spend"],
+  ["routing", "Assignment and scoring", "Routing rules, simulator, score rules"],
+  ["templates", "Templates", "WhatsApp, SMS and email templates"],
+  ["forms", "Forms", "Hosted enquiry forms and embed code"],
+  ["workflows", "Workflows", "Automation recipes, test runs, run log"],
+  ["integrations", "Channels and integrations", "Connectors, API keys, webhooks"],
+  ["wallet", "Wallet and plan", "Credits, usage and subscription"],
+  ["data", "Data management", "Import, review queue, erasure requests"],
+  ["audit", "Audit log", "Who changed, exported or deleted what"],
+  ["help", "Help and support", "Tickets, feature requests, support access"],
+];
+
+/** Which admin-console sections a role may open (PRD section 12: F, Branch scope, Part). */
+export function adminSections(p: Perms): string[] {
+  const a = lvl(p, "admin");
+  const out = new Set<string>();
+  if (a === "F") ADMIN_SECTIONS.forEach(([k]) => out.add(k));
+  if (a === "Branch scope") ["users", "routing", "templates", "sources", "forms", "data", "help"].forEach((k) => out.add(k));
+  if (a === "Part" && lvl(p, "campaigns") === "F") ["sources", "templates", "forms"].forEach((k) => out.add(k));
+  if (a === "Part" && lvl(p, "payments") === "F") out.add("wallet");
+  if (has(p, "workflows")) out.add("workflows");
+  if (has(p, "audit")) out.add("audit");
+  if (out.size) out.add("help");
+  return [...out];
+}

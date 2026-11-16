@@ -30,6 +30,7 @@ export async function sendCampaign(fd: FormData) {
   const c = await one("select c.*, t.body, t.category, t.name as template from campaigns c join templates t on t.id=c.template_id where c.tenant_id=$1 and c.id=$2 and c.status='draft'", [ctx.tenantId, str(fd, "id")]);
   if (!c) return;
   const ids = await campaignAudience(ctx, c);
+  const tplRow = await one("select * from templates where id=$1", [c.template_id]);
   // One message per family, even when several children match (MSG-05 frequency rule).
   const seen = new Set<string>();
   let sent = 0, delivered = 0, skipped = 0;
@@ -39,9 +40,10 @@ export async function sendCampaign(fd: FormData) {
     seen.add(e.household_id);
     // CMPL-05: promotional messages never go to families who have already enrolled or closed.
     if (c.category === "marketing" && (e.is_won || e.is_closed)) { skipped++; continue; }
-    const r = await sendMessage(ctx.tenantId, { householdId: e.household_id, enquiryId: id, channel: c.channel, body: renderTemplate(c.body, await mergeVars(ctx.tenantId, e)), actorId: ctx.user.id, campaignId: c.id });
+    const vars = await mergeVars(ctx.tenantId, e);
+    const r = await sendMessage(ctx.tenantId, { householdId: e.household_id, enquiryId: id, channel: c.channel, body: renderTemplate(c.body, vars), actorId: ctx.user.id, campaignId: c.id, template: tplRow, vars });
     sent++;
-    if (r.status === "delivered") delivered++;
+    if (r.status !== "failed") delivered++;
   }
   await update("campaigns", ctx.tenantId, c.id, { status: "sent", sent_at: new Date(), cost: delivered * (MESSAGE_COST[c.channel] ?? 0), stats: { targeted: seen.size, sent, delivered, skipped } });
   await audit(ctx.tenantId, actorOf(ctx), "campaign", "campaign", c.id, `Sent campaign "${c.name}" to ${sent} families`);

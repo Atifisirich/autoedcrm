@@ -106,7 +106,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         <div className="card"><Empty title={filtered ? "No leads match these filters" : "No leads yet for this year"}>{filtered ? <>Try removing a filter, or <Link className="link" href="/leads">see all leads</Link>.</> : "Leads arrive from your website form, ads, WhatsApp and walk-ins. Press N to add the first one."}</Empty></div>
       ) : view === "kanban" ? (
         <Kanban leads={leads} stages={stages.filter((s) => (sp.stage ? s.id === sp.stage : boardPhases.includes(s.phase_key))) as any} reasons={reasons} canEdit={can.edit} />
-      ) : view === "cards" ? (
+      ) : view === "cards" || view === "phone" ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {leads.map((l) => (
             <Link key={l.id} href={`/households/${l.household_id}?e=${l.id}`} className="card block p-3 hover:border-brand-500">
@@ -118,7 +118,23 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           ))}
         </div>
       ) : (
+        <>
+        {/* Phones get a compact list instead of the wide table. */}
+        <ul className="card divide-y divide-slate-100 md:hidden">
+          {leads.map((l) => (
+            <li key={l.id}>
+              <Link href={`/households/${l.household_id}?e=${l.id}`} className="block px-3 py-2.5">
+                <div className="flex items-start justify-between gap-2"><span className="font-semibold text-slate-900">{l.student}</span><Badge tone={l.color}>{l.stage}</Badge></div>
+                <div className="muted text-xs">{l.grade} · {l.guardian} · {l.mobile}</div>
+                <div className="mt-1 flex items-center justify-between text-xs"><span><Temp t={l.temperature} /> <span className="muted ml-1">{l.owner}</span></span><span className={l.overdue ? "font-medium text-rose-700" : "muted"}>{l.next ? (l.overdue ? "Overdue: " : "Next: ") + l.next : "No next action"}</span></div>
+              </Link>
+            </li>
+          ))}
+        </ul>
+        <div className="hidden md:block">
         <LeadTable leads={leads} total={total} query={queryString} stages={stages as any} users={users as any} templates={templates as any} reasons={reasons} can={can} />
+        </div>
+        </>
       )}
       {view !== "kanban" && total > size && (
         <div className="mt-3 flex items-center justify-between">

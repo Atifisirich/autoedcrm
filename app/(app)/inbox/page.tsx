@@ -68,7 +68,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
                       {m.is_note && <div className="text-[11px] font-semibold text-amber-800">Internal note (not sent to the parent)</div>}
                       <p className="whitespace-pre-wrap text-slate-800">{m.body}</p>
                       {m.status === "failed" && <p className="mt-1 text-xs font-medium text-rose-700">Not delivered: {m.fail_reason}</p>}
-                      <div className="muted mt-0.5 text-[11px]">{m.direction === "in" ? cur.guardian : m.sender ?? "Automatic"} · {fmtDateTime(m.created_at)}{m.direction === "out" && !m.is_note && m.status !== "failed" ? " · delivered" : ""}</div>
+                      <div className="muted mt-0.5 text-[11px]">{m.direction === "in" ? cur.guardian : m.sender ?? "Automatic"} · {fmtDateTime(m.created_at)}{m.direction === "out" && !m.is_note && m.status !== "failed" ? ` · ${m.status === "read" ? "✓✓ read" : m.status === "delivered" ? "✓✓ delivered" : "✓ sent"}` : ""}</div>
                     </div>
                   </div>
                 ))}

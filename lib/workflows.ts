@@ -127,16 +127,18 @@ async function runSteps(run: Row, wf: Row, from: number) {
       if (s.type === "send") {
         const tpl = await one("select * from templates where tenant_id=$1 and name=$2 and status='approved' order by (channel=$3) desc limit 1", [tenantId, s.template, s.channel]);
         if (!tpl) { say(i, `Skipped: no approved template named "${s.template}".`, false); continue; }
-        const body = renderTemplate(tpl.body, await mergeVars(tenantId, e));
+        const vars = await mergeVars(tenantId, e);
+        const body = renderTemplate(tpl.body, vars);
         if (test) { say(i, `Would send on ${s.channel}: "${body}"`); continue; }
-        let res = await sendMessage(tenantId, { householdId: e.household_id, enquiryId: e.id, channel: s.channel, body });
+        let res = await sendMessage(tenantId, { householdId: e.household_id, enquiryId: e.id, channel: s.channel, body, template: tpl, vars });
         let used: string = s.channel;
         for (const fb of s.fallback ?? []) {
-          if (res.status === "delivered") break;
-          res = await sendMessage(tenantId, { householdId: e.household_id, enquiryId: e.id, channel: fb, body });
+          if (res.status !== "failed") break;
+          const fbTpl = await one("select * from templates where tenant_id=$1 and name=$2 and channel=$3 and status='approved'", [tenantId, s.template, fb]);
+          res = await sendMessage(tenantId, { householdId: e.household_id, enquiryId: e.id, channel: fb, body: fbTpl ? renderTemplate(fbTpl.body, vars) : body, template: fbTpl, vars });
           used = fb;
         }
-        say(i, res.status === "delivered" ? `Sent "${s.template}" on ${used}.` : `Could not send "${s.template}": ${res.reason}`, res.status === "delivered");
+        say(i, res.status !== "failed" ? `Sent "${s.template}" on ${used}.` : `Could not send "${s.template}": ${res.reason}`, res.status !== "failed");
       } else if (s.type === "task") {
         if (test) { say(i, `Would create task "${s.title}" for ${e.owner_name}, due in ${fmtMins(s.dueMins)}.`); continue; }
         await addTask(tenantId, { enquiryId: e.id, title: s.title, type: s.taskType, dueAt: new Date(Date.now() + s.dueMins * 60000), priority: s.priority });

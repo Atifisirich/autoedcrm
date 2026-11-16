@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { AsyncLocalStorage } from "node:async_hooks";
 
 export type Row = Record<string, any>;
@@ -60,10 +61,18 @@ function driver(): Promise<Driver> {
 export function ready(): Promise<void> {
   return (g.__aed!.ready ??= (async () => {
     const d = await driver();
-    const exists = (await d.query("select to_regclass('support_access') is not null as ok")).rows[0].ok;
-    if (!exists || process.env.FORCE_SCHEMA === "1") {
-      const schema = fs.readFileSync(path.join(process.cwd(), "db", "schema.sql"), "utf8");
-      await d.exec(schema);
+    // The schema file is idempotent. It is re-applied whenever its content changes, inside one
+    // transaction holding an advisory lock, so parallel serverless instances never race on DDL.
+    const schema = fs.readFileSync(path.join(process.cwd(), "db", "schema.sql"), "utf8");
+    const hash = crypto.createHash("sha256").update(schema).digest("hex");
+    const hasMeta = (await d.query("select to_regclass('schema_meta') is not null as ok")).rows[0].ok;
+    const current = hasMeta ? (await d.query("select hash from schema_meta where id=1")).rows[0]?.hash : null;
+    if (current !== hash || process.env.FORCE_SCHEMA === "1") {
+      await d.exec(
+        "begin; select pg_advisory_xact_lock(424242);\n" + schema +
+          "\ncreate table if not exists schema_meta (id int primary key, hash text not null, applied_at timestamptz not null default now());" +
+          `\ninsert into schema_meta (id, hash) values (1, '${hash}') on conflict (id) do update set hash=excluded.hash, applied_at=now();\ncommit;`,
+      );
     }
     const wantSeed = !process.env.DATABASE_URL || process.env.SEED_DEMO === "1";
     if (!wantSeed) return;

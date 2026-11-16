@@ -49,6 +49,7 @@ const TEMPLATES: [string, string, string, string][] = [
   ["whatsapp", "Admission welcome", "utility", "Welcome to {{school}}! {{student_name}}'s admission to {{grade}} is confirmed. We will share the onboarding form and orientation date soon."],
   ["whatsapp", "Checking in", "marketing", "Hello {{guardian_name}}, admissions for {{grade}} at {{school}} are still open. Would you like {{counsellor}} to call you?"],
   ["whatsapp", "Fee structure", "utility", "Hello {{guardian_name}}, here is the fee structure for {{grade}} at {{school}}, {{branch}}. {{counsellor}} can walk you through it."],
+  ["whatsapp", "Payment link", "utility", "Hello {{guardian_name}}, here is the secure link to pay the {{purpose}} of {{amount}} for {{student_name}}: {{pay_link}}"],
   ["whatsapp", "Application link", "utility", "Hello {{guardian_name}}, you can fill the application for {{student_name}} here: {{apply_link}}"],
   ["sms", "Visit reminder", "utility", "Reminder: your campus visit at {{school}} {{branch}} is tomorrow. See you there."],
   ["email", "Welcome", "utility", "Dear {{guardian_name}},\n\nThank you for your interest in {{school}}, {{branch}} for {{student_name}}. {{counsellor}} from our admissions team will be in touch.\n\nWarm regards,\nAdmissions Office"],

@@ -71,7 +71,7 @@ async function session(email) {
   await a.click("button:has-text('Form / payment')");
   await a.selectOption("form select[name=mode]", "link");
   await a.click("form button.btn-primary:has-text('Continue')");
-  await a.waitForSelector("text=Payment link for Registration fee");
+  await a.waitForSelector("text=secure link to pay the Registration fee");
   await a.goto(`${BASE}/applications/${enquiryId}`, { waitUntil: "networkidle" });
   const payToken = (await text(a)).match(/\/pay\/([a-f0-9]{32})/)[1];
   await parent.goto(`${BASE}/pay/${payToken}`, { waitUntil: "networkidle" });
@@ -155,7 +155,7 @@ async function session(email) {
     await a.click("button:has-text('Create year')");
     await a.waitForSelector("text=carried forward as prospects");
   }
-  ok("Rollover creates the next academic year and carries families forward", (await a.locator("select[name=year]").innerText()).includes(newYear), newYear);
+  ok("Rollover creates the next academic year and carries families forward", (await a.locator("header select[name=year]").innerText()).includes(newYear), newYear);
 
   await browser.close();
   console.log(failures ? `\n${failures} check(s) failed` : "\nAll checks passed");

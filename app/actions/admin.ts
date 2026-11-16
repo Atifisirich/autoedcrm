@@ -464,3 +464,51 @@ export async function supportAccess(fd: FormData) {
   }
   done();
 }
+
+// ----- Meta: WhatsApp Cloud API and lead ads -----
+
+export async function saveMeta(fd: FormData) {
+  const ctx = await admin("integrations");
+  const { setSecret, deleteSecret } = await import("@/lib/secrets");
+  const s = ctx.tenant.settings;
+  const integrations = { ...(s.integrations ?? {}) };
+  if (fd.get("section") === "whatsapp") {
+    integrations.whatsapp = { ...(integrations.whatsapp ?? {}), phone_number_id: str(fd, "phone_number_id"), waba_id: str(fd, "waba_id"), enabled: fd.get("enabled") === "on", updated_at: new Date().toISOString() };
+    if (str(fd, "wa_token")) await setSecret(ctx.tenantId, "wa_token", str(fd, "wa_token"));
+  } else {
+    integrations.meta_leads = { ...(integrations.meta_leads ?? {}), page_id: str(fd, "page_id"), updated_at: new Date().toISOString() };
+    if (str(fd, "page_token")) await setSecret(ctx.tenantId, "meta_page_token", str(fd, "page_token"));
+  }
+  if (str(fd, "app_secret")) await setSecret(ctx.tenantId, "meta_app_secret", str(fd, "app_secret"));
+  if (fd.get("clear") === "1") { await deleteSecret(ctx.tenantId, fd.get("section") === "whatsapp" ? "wa_token" : "meta_page_token"); }
+  const { getSecret } = await import("@/lib/secrets");
+  if (!(await getSecret(ctx.tenantId, "meta_verify_token"))) await setSecret(ctx.tenantId, "meta_verify_token", crypto.randomBytes(16).toString("hex"));
+  await q("update tenants set settings = settings || $2::jsonb where id=$1", [ctx.tenantId, { integrations }]);
+  await log(ctx, "integration", `Updated Meta ${fd.get("section") === "whatsapp" ? "WhatsApp" : "lead ads"} settings`);
+  await flash("Saved. Use Test to check the connection.");
+  done();
+}
+
+export async function metaAction(fd: FormData) {
+  const ctx = await admin("integrations");
+  const meta = await import("@/lib/meta");
+  const what = str(fd, "what");
+  if (what === "test_wa") {
+    const cfg = await meta.waConfig(ctx.tenantId);
+    if (!cfg) return flash("Fill in the phone number ID and access token, tick Use for sending, and save first.", "error");
+    const r = await meta.waTest(cfg);
+    await flash(r.text, r.ok ? "ok" : "error");
+  } else if (what === "sync_templates") {
+    const r = await meta.syncTemplates(ctx.tenantId);
+    await log(ctx, "template", `Synced WhatsApp templates with Meta: ${r.submitted} submitted, ${r.updated} refreshed`);
+    await flash(`${r.submitted} template(s) sent to Meta for review, ${r.updated} refreshed.` + (r.errors.length ? ` Problems: ${r.errors.slice(0, 3).join(" | ")}` : ""), r.errors.length ? "error" : "ok");
+  } else if (what === "test_leads") {
+    const r = await meta.pageTest(ctx.tenantId);
+    await flash(r.text, r.ok ? "ok" : "error");
+  } else if (what === "rotate_verify") {
+    const { setSecret } = await import("@/lib/secrets");
+    await setSecret(ctx.tenantId, "meta_verify_token", crypto.randomBytes(16).toString("hex"));
+    await flash("New verify token created. Paste it into your Meta app's webhook settings.");
+  }
+  done();
+}

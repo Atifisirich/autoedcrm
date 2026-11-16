@@ -95,7 +95,7 @@ export async function Templates({ ctx }: { ctx: Ctx }) {
         <div className="divide-y divide-slate-100">
           {rows.map((t) => (
             <details key={t.id} className="px-4 py-2.5">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-2"><span><b>{t.name}</b> <span className="muted">· {t.channel} · {t.category} · {t.language}</span></span><Badge tone={t.status === "approved" ? "green" : "amber"}>{t.status}</Badge></summary>
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-2"><span><b>{t.name}</b> <span className="muted">· {t.channel} · {t.category} · {t.language}</span></span><span className="flex gap-1">{t.channel === "whatsapp" && t.meta_status && <Badge tone={t.meta_status === "APPROVED" ? "green" : t.meta_status === "REJECTED" ? "rose" : "amber"} title={t.meta_reason ?? undefined}>Meta: {String(t.meta_status).toLowerCase()}</Badge>}<Badge tone={t.status === "approved" ? "green" : "amber"}>{t.status}</Badge></span></summary>
               <div className="mt-3 rounded-md bg-slate-50 p-3"><TForm t={t} /></div>
             </details>
           ))}

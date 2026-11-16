@@ -387,19 +387,39 @@ const CHANNEL_NAME: Record<string, string> = { whatsapp: "WhatsApp", sms: "SMS",
  * message and charges the wallet but does not reach a real phone. Failures are stored in
  * plain language with a suggested next step; provider codes never reach counsellors.
  */
-export async function sendMessage(tenantId: string, m: { householdId: string; enquiryId?: string | null; channel: string; body: string; actorId?: string | null; campaignId?: string | null }): Promise<{ status: "delivered" | "failed"; reason?: string }> {
+/**
+ * Sends a message to the household's primary guardian.
+ * WhatsApp goes through the school's own Meta Cloud API account when connected; otherwise, and for
+ * SMS and email until those providers are connected, the bundled simulator records it and charges the
+ * wallet without reaching a phone. Failures are stored in plain language with a suggested next step.
+ */
+export async function sendMessage(
+  tenantId: string,
+  m: { householdId: string; enquiryId?: string | null; channel: string; body: string; actorId?: string | null; campaignId?: string | null; template?: Row | null; vars?: Record<string, string | null | undefined> },
+): Promise<{ status: "sent" | "delivered" | "failed"; reason?: string }> {
   const g = await one("select * from guardians where tenant_id=$1 and household_id=$2 order by is_primary desc limit 1", [tenantId, m.householdId]);
   const tenant = await one("select wallet_balance from tenants where id=$1", [tenantId]);
-  const cost = MESSAGE_COST[m.channel] ?? 0;
+  const { waConfig, waSendTemplate, waSendText } = await import("./meta");
+  const live = m.channel === "whatsapp" ? await waConfig(tenantId) : null;
+  const cost = live ? 0 : MESSAGE_COST[m.channel] ?? 0; // the school's own Meta account bills the school directly
   let reason: string | undefined;
+  let providerId: string | null = null;
   if (!g) reason = "No guardian contact on this household.";
   else if (g.consent?.[m.channel] === false) reason = `This parent has opted out of ${CHANNEL_NAME[m.channel]} messages. Use another channel they have agreed to.`;
   else if (m.channel === "email" && !g.email) reason = "No email address on file. Ask the parent for one or use WhatsApp.";
-  else if (Number(tenant!.wallet_balance) < cost) reason = "Message credits have run out. Ask your admin to recharge the wallet.";
+  else if (live) {
+    const lastIn = await one("select max(created_at) as at from messages where tenant_id=$1 and household_id=$2 and channel='whatsapp' and direction='in'", [tenantId, m.householdId]);
+    const windowOpen = !!lastIn?.at && Date.now() - new Date(lastIn.at).getTime() < 24 * 3600e3;
+    const tpl = m.template && m.template.channel === "whatsapp" && m.template.meta_status === "APPROVED" && m.template.meta_name ? m.template : null;
+    const res = tpl ? await waSendTemplate(live, g.mobile, tpl, m.vars ?? {}) : windowOpen ? await waSendText(live, g.mobile, m.body) : null;
+    if (!res) reason = m.template ? "This template is not approved on WhatsApp yet, and it is more than 24 hours since the parent last wrote. Ask your admin to sync templates, or call." : "More than 24 hours since the parent last wrote, so only an approved template can be sent.";
+    else if (!res.ok) reason = res.reason;
+    else providerId = res.id;
+  } else if (Number(tenant!.wallet_balance) < cost) reason = "Message credits have run out. Ask your admin to recharge the wallet.";
   else if (m.channel === "whatsapp" && g.mobile.endsWith("00")) reason = "This number cannot receive WhatsApp messages. Try SMS or call.";
-  const status = reason ? "failed" : "delivered";
-  await insert("messages", { tenant_id: tenantId, household_id: m.householdId, enquiry_id: m.enquiryId ?? null, channel: m.channel, direction: "out", body: m.body, status, fail_reason: reason ?? null, campaign_id: m.campaignId ?? null, sender_id: m.actorId ?? null, read: true });
-  if (!reason) {
+  const status = reason ? "failed" : live ? "sent" : "delivered";
+  await insert("messages", { tenant_id: tenantId, household_id: m.householdId, enquiry_id: m.enquiryId ?? null, channel: m.channel, direction: "out", body: m.body, status, fail_reason: reason ?? null, campaign_id: m.campaignId ?? null, sender_id: m.actorId ?? null, read: true, provider_id: providerId });
+  if (!reason && cost > 0) {
     await q("update tenants set wallet_balance=wallet_balance-$2 where id=$1", [tenantId, cost]);
     await insert("wallet_ledger", { tenant_id: tenantId, type: "debit", category: m.channel, amount: cost, note: m.campaignId ? "Campaign message" : "Message" });
   }

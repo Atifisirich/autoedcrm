@@ -86,8 +86,9 @@ export async function bulkAction(fd: FormData) {
     for (const id of ids) {
       const e = await getEnquiry(ctx.tenantId, id);
       if (!e) continue;
-      const r = await sendMessage(ctx.tenantId, { householdId: e.household_id, enquiryId: id, channel: tpl.channel, body: renderTemplate(tpl.body, await mergeVars(ctx.tenantId, e)), actorId: ctx.user.id });
-      r.status === "delivered" ? done++ : skipped++;
+      const vars = await mergeVars(ctx.tenantId, e);
+      const r = await sendMessage(ctx.tenantId, { householdId: e.household_id, enquiryId: id, channel: tpl.channel, body: renderTemplate(tpl.body, vars), actorId: ctx.user.id, template: tpl, vars });
+      r.status !== "failed" ? done++ : skipped++;
     }
     await flash(`"${tpl.name}" sent to ${done} famil${done === 1 ? "y" : "ies"}` + (skipped ? `; ${skipped} not delivered (see each timeline for why).` : "."));
   }

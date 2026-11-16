@@ -99,10 +99,13 @@ export async function sendMsg(fd: FormData) {
   const e = (await getEnquiry(ctx.tenantId, (await findEnquiry(ctx, str(fd, "enquiryId"))).id))!;
   let body = str(fd, "body");
   let channel = str(fd, "channel") || "whatsapp";
+  let tpl: Record<string, any> | null = null;
+  let vars: Record<string, string> = {};
   if (str(fd, "templateId")) {
-    const tpl = await one("select * from templates where tenant_id=$1 and id=$2 and status='approved'", [ctx.tenantId, str(fd, "templateId")]);
+    tpl = await one("select * from templates where tenant_id=$1 and id=$2 and status='approved'", [ctx.tenantId, str(fd, "templateId")]);
     if (!tpl) return flash("That template is not approved yet.", "error");
-    body = renderTemplate(tpl.body, await mergeVars(ctx.tenantId, e));
+    vars = await mergeVars(ctx.tenantId, e);
+    body = renderTemplate(tpl.body, vars);
     channel = tpl.channel;
   }
   if (!body) return flash("Write a message or pick a template.", "error");
@@ -114,7 +117,7 @@ export async function sendMsg(fd: FormData) {
   if (fd.get("note") === "on") {
     await insert("messages", { tenant_id: ctx.tenantId, household_id: e.household_id, enquiry_id: e.id, channel, direction: "out", body, status: "note", is_note: true, sender_id: ctx.user.id, read: true });
   } else {
-    const r = await sendMessage(ctx.tenantId, { householdId: e.household_id, enquiryId: e.id, channel, body, actorId: ctx.user.id });
+    const r = await sendMessage(ctx.tenantId, { householdId: e.household_id, enquiryId: e.id, channel, body, actorId: ctx.user.id, template: tpl, vars });
     if (r.status === "failed") await flash("Not delivered: " + r.reason, "error");
     else await flash(`Sent on ${channel === "whatsapp" ? "WhatsApp" : channel === "sms" ? "SMS" : "email"}.`);
     await q("update messages set read=true where tenant_id=$1 and household_id=$2 and direction='in'", [ctx.tenantId, e.household_id]);
@@ -330,8 +333,11 @@ export async function paymentAction(fd: FormData) {
     const mode = str(fd, "mode") || "link";
     const p = await insert("payments", { tenant_id: ctx.tenantId, enquiry_id: e.id, purpose: str(fd, "purpose") || "Registration fee", amount, mode, reference: str(fd, "reference") || null, status: mode === "link" ? "pending" : "awaiting_verification" });
     if (mode === "link") {
-      const r = await sendMessage(ctx.tenantId, { householdId: e.household_id, enquiryId: e.id, channel: "whatsapp", body: `Payment link for ${p.purpose} (${inr(amount)}): ${process.env.APP_URL ?? ""}/pay/${p.token}`, actorId: ctx.user.id });
-      await flash(r.status === "delivered" ? "Payment link sent on WhatsApp." : "Link created but not delivered: " + r.reason, r.status === "delivered" ? "ok" : "error");
+      const link = `${process.env.APP_URL ?? ""}/pay/${p.token}`;
+      const payTpl = await one("select * from templates where tenant_id=$1 and channel='whatsapp' and name='Payment link' and status='approved'", [ctx.tenantId]);
+      const vars = { ...(await mergeVars(ctx.tenantId, e)), purpose: p.purpose, amount: inr(amount), pay_link: link };
+      const r = await sendMessage(ctx.tenantId, { householdId: e.household_id, enquiryId: e.id, channel: "whatsapp", body: payTpl ? renderTemplate(payTpl.body, vars) : `Payment link for ${p.purpose} (${inr(amount)}): ${link}`, actorId: ctx.user.id, template: payTpl, vars });
+      await flash(r.status !== "failed" ? "Payment link sent on WhatsApp." : "Link created but not delivered: " + r.reason, r.status !== "failed" ? "ok" : "error");
     } else if (canVerifyPayment(ctx.perms)) {
       await settlePayment(ctx.tenantId, p.id, true, actor);
       await flash("Payment recorded and receipt issued.");

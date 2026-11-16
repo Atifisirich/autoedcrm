@@ -3,15 +3,71 @@ import type { Ctx } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { fmtDateTime, inr, rel } from "@/lib/fmt";
 import { isFullAdmin } from "@/lib/perm";
-import { Badge, Bars, Empty, Stat } from "@/components/ui";
-import { createApiKey, eraseHousehold, importCsv, integrationAction, reviewRows, supportAccess, undoImport } from "@/app/actions/admin";
+import { Badge, Bars, Empty, Field, Stat } from "@/components/ui";
+import { createApiKey, eraseHousehold, importCsv, integrationAction, metaAction, reviewRows, saveMeta, supportAccess, undoImport } from "@/app/actions/admin";
+import { getSecret, secretHint } from "@/lib/secrets";
 import { raiseTicket } from "@/app/actions/session";
 
 const CONNECTORS: [string, string, string][] = [
-  ["WhatsApp Business API", "Messaging", "simulated"], ["SMS (DLT registered)", "Messaging", "simulated"], ["Email sending domain", "Messaging", "simulated"],
+  ["WhatsApp Business API (Meta Cloud API)", "Messaging", "meta"], ["SMS (DLT registered)", "Messaging", "simulated"], ["Email sending domain", "Messaging", "simulated"],
   ["Cloud telephony", "Telephony", "not_connected"], ["Meta lead ads", "Lead ads", "not_connected"], ["Google Ads lead forms", "Lead ads", "not_connected"],
   ["Payment gateway (Razorpay / PayU / Cashfree)", "Payments", "simulated"], ["School ERP", "ERP", "not_connected"], ["Website forms and REST API", "Website", "live"], ["Outbound webhooks", "Automation", "live"],
 ];
+
+async function MetaSetup({ ctx }: { ctx: Ctx }) {
+  const t = ctx.tenantId;
+  const wa = ctx.tenant.settings.integrations?.whatsapp ?? {};
+  const ml = ctx.tenant.settings.integrations?.meta_leads ?? {};
+  const [tokenHint, secretH, pageHint, verify, key, leads, tpl] = await Promise.all([
+    secretHint(t, "wa_token"), secretHint(t, "meta_app_secret"), secretHint(t, "meta_page_token"), getSecret(t, "meta_verify_token"),
+    q("select webhook_key from tenants where id=$1", [t]),
+    q("select status, count(*)::int n from meta_leads where tenant_id=$1 group by status", [t]),
+    q("select coalesce(meta_status,'not sent') as s, count(*)::int n from templates where tenant_id=$1 and channel='whatsapp' group by 1", [t]),
+  ]);
+  const hook = `${process.env.APP_URL ?? "https://YOUR-DOMAIN"}/api/webhooks/meta/${key[0]?.webhook_key}`;
+  const live = wa.enabled && wa.phone_number_id && tokenHint;
+  return (
+    <section className="card">
+      <div className="card-h"><span>Meta: WhatsApp and lead ads</span>{live ? <Badge tone="green">WhatsApp live</Badge> : <Badge tone="amber">WhatsApp simulated</Badge>}</div>
+      <div className="space-y-5 p-4">
+        <ol className="list-decimal space-y-1 pl-5 text-slate-700">
+          <li>In Meta Business Suite create (or open) your app with the <b>WhatsApp</b> product and add your school number.</li>
+          <li>Create a <b>System User</b> with a permanent token that has <code>whatsapp_business_messaging</code>, <code>whatsapp_business_management</code> and, for lead ads, <code>leads_retrieval</code> and <code>pages_manage_metadata</code>.</li>
+          <li>In the app's <b>Webhooks</b> settings paste the callback URL and verify token below, then subscribe to <code>messages</code>, <code>message_template_status_update</code> and, on the Page object, <code>leadgen</code>.</li>
+          <li>Fill in the IDs and tokens here, tick Use for sending, Save, then Test. Then Sync templates and wait for Meta's approval.</li>
+        </ol>
+        <div className="grid gap-2 rounded-md bg-slate-50 p-3 text-xs md:grid-cols-[9rem_1fr]">
+          <span className="font-semibold">Callback URL</span><code className="select-all break-all">{hook}</code>
+          <span className="font-semibold">Verify token</span><span className="flex flex-wrap items-center gap-2"><code className="select-all break-all">{verify ?? "Created when you first save"}</code>{verify && <form action={metaAction}><input type="hidden" name="what" value="rotate_verify" /><button className="link">New token</button></form>}</span>
+        </div>
+        <form action={saveMeta} className="grid gap-3 md:grid-cols-2">
+          <input type="hidden" name="section" value="whatsapp" />
+          <p className="font-semibold md:col-span-2">WhatsApp Cloud API</p>
+          <Field label="Phone number ID"><input name="phone_number_id" defaultValue={wa.phone_number_id} className="input" placeholder="From WhatsApp > API setup" /></Field>
+          <Field label="WhatsApp Business Account ID"><input name="waba_id" defaultValue={wa.waba_id} className="input" /></Field>
+          <Field label={`Permanent access token ${tokenHint ? `(saved ${tokenHint})` : ""}`} hint="Leave blank to keep the saved one."><input name="wa_token" type="password" autoComplete="off" className="input" /></Field>
+          <Field label={`App secret ${secretH ? `(saved ${secretH})` : ""}`} hint="Used to check that webhook calls really come from Meta."><input name="app_secret" type="password" autoComplete="off" className="input" /></Field>
+          <label className="flex items-center gap-2"><input type="checkbox" name="enabled" defaultChecked={!!wa.enabled} /> Use for sending (when off, WhatsApp stays simulated)</label>
+          <div className="flex flex-wrap gap-2 md:col-span-2"><button className="btn btn-primary">Save</button></div>
+        </form>
+        <div className="flex flex-wrap items-center gap-2">
+          <form action={metaAction}><input type="hidden" name="what" value="test_wa" /><button className="btn">Test connection</button></form>
+          <form action={metaAction}><input type="hidden" name="what" value="sync_templates" /><button className="btn">Sync templates with Meta</button></form>
+          <span className="muted text-xs">Templates: {tpl.map((x) => `${x.n} ${String(x.s).toLowerCase()}`).join(", ") || "none"}</span>
+        </div>
+        <form action={saveMeta} className="grid gap-3 border-t border-slate-200 pt-4 md:grid-cols-2">
+          <input type="hidden" name="section" value="leads" />
+          <p className="font-semibold md:col-span-2">Facebook and Instagram lead ads</p>
+          <Field label="Facebook Page ID"><input name="page_id" defaultValue={ml.page_id} className="input" /></Field>
+          <Field label={`Page access token ${pageHint ? `(saved ${pageHint})` : ""}`} hint="Leave blank to keep the saved one."><input name="page_token" type="password" autoComplete="off" className="input" /></Field>
+          <div className="flex flex-wrap items-center gap-2 md:col-span-2"><button className="btn btn-primary">Save</button><span className="muted text-xs">Leads received: {leads.map((x) => `${x.n} ${x.status.replace("_", " ")}`).join(", ") || "none yet"}</span></div>
+        </form>
+        <form action={metaAction}><input type="hidden" name="what" value="test_leads" /><button className="btn">Test and subscribe the Page</button></form>
+        <p className="muted text-xs">Form questions are matched by name: child or student name, phone, email, grade or class, campus or branch, city or area. Anything else is saved as a note on the enquiry.</p>
+      </div>
+    </section>
+  );
+}
 
 export async function Integrations({ ctx }: { ctx: Ctx }) {
   const keys = await q("select k.*, s.name as source from api_keys k left join sources s on s.id=k.source_id where k.tenant_id=$1 order by k.created_at desc", [ctx.tenantId]);
@@ -19,11 +75,12 @@ export async function Integrations({ ctx }: { ctx: Ctx }) {
   const sources = await q("select id, name, channel from sources where tenant_id=$1 and active order by channel, name", [ctx.tenantId]);
   return (
     <div className="space-y-4">
+      <MetaSetup ctx={ctx} />
       <section className="card">
         <div className="card-h">Channels and connectors</div>
         <table className="tbl"><tbody>{CONNECTORS.map(([name, cat, status]) => (
-          <tr key={name}><td className="font-medium">{name}</td><td className="muted">{cat}</td><td>{status === "live" ? <Badge tone="green">Live</Badge> : status === "simulated" ? <Badge tone="amber">Simulated provider</Badge> : <Badge>Not connected</Badge>}</td>
-            <td className="muted text-xs">{status === "live" ? "Working now." : status === "simulated" ? "Messages and payments are recorded and charged to the wallet but do not leave the system until a provider account is connected." : "Needs a provider account. Leads from this source can arrive today through the REST API below."}</td></tr>
+          <tr key={name}><td className="font-medium">{name}</td><td className="muted">{cat}</td><td>{status === "live" || (status === "meta" && ctx.tenant.settings.integrations?.whatsapp?.enabled) ? <Badge tone="green">Live</Badge> : status === "simulated" || status === "meta" ? <Badge tone="amber">Simulated provider</Badge> : <Badge>Not connected</Badge>}</td>
+            <td className="muted text-xs">{status === "meta" ? "Connect your own Meta Business account above." : status === "live" ? "Working now." : status === "simulated" ? "Messages and payments are recorded and charged to the wallet but do not leave the system until a provider account is connected." : "Needs a provider account. Leads from this source can arrive today through the REST API below."}</td></tr>
         ))}</tbody></table>
       </section>
       <section className="card">

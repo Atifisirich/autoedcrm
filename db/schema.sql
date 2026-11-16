@@ -528,6 +528,41 @@ create table if not exists support_access (
   created_at timestamptz not null default now()
 );
 
+-- ---------- Additions after first release (each statement must stay idempotent) ----------
+
+-- Secrets per tenant (provider tokens), encrypted by the app with APP_SECRET.
+create table if not exists tenant_secrets (
+  tenant_id uuid not null references tenants(id) on delete cascade,
+  key text not null,
+  value_enc text not null,
+  updated_at timestamptz not null default now(),
+  primary key (tenant_id, key)
+);
+alter table tenants add column if not exists webhook_key text;
+alter table tenants alter column webhook_key set default replace(gen_random_uuid()::text, '-', '');
+update tenants set webhook_key = replace(gen_random_uuid()::text, '-', '') where webhook_key is null;
+create unique index if not exists tenants_webhook_key_idx on tenants (webhook_key);
+
+alter table messages add column if not exists provider_id text;
+alter table messages add column if not exists delivered_at timestamptz;
+alter table messages add column if not exists read_at timestamptz;
+create index if not exists messages_provider_idx on messages (provider_id);
+
+alter table templates add column if not exists meta_name text;
+alter table templates add column if not exists meta_status text;
+alter table templates add column if not exists meta_vars jsonb not null default '[]';
+alter table templates add column if not exists meta_reason text;
+
+-- Leads received from Meta lead ads, kept so a retried webhook never creates a second enquiry.
+create table if not exists meta_leads (
+  leadgen_id text primary key,
+  tenant_id uuid not null references tenants(id) on delete cascade,
+  enquiry_id uuid,
+  status text not null,
+  detail text,
+  created_at timestamptz not null default now()
+);
+
 -- When hosted on Supabase the public schema is reachable through the auto-generated API.
 -- The app talks to Postgres directly, so lock every table it owns down for API roles.
 do $$

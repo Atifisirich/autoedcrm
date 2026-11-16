@@ -37,7 +37,7 @@ export async function login(email: string, password: string): Promise<string | n
   const f = fails.get(key);
   if (f && f.n >= 5 && Date.now() - f.t < 10 * 60000) return "locked";
   const u = await one("select * from users where lower(email)=$1 and status='active'", [key]);
-  if (!u || !(await bcrypt.compare(password, u.password_hash))) {
+  if (!u || !(await bcrypt.compare(password.trim(), u.password_hash))) {
     fails.set(key, { n: f && Date.now() - f.t < 10 * 60000 ? f.n + 1 : 1, t: Date.now() });
     return null;
   }
@@ -76,7 +76,7 @@ export async function loginForToken(email: string, password: string, device: str
   const f = fails.get(key);
   if (f && f.n >= 5 && Date.now() - f.t < 10 * 60000) return { error: "Too many wrong attempts. Wait ten minutes and try again.", status: 429 };
   const u = await one("select * from users where lower(email)=$1 and status='active'", [key]);
-  if (!u || !(await bcrypt.compare(password, u.password_hash))) {
+  if (!u || !(await bcrypt.compare(password.trim(), u.password_hash))) {
     fails.set(key, { n: f && Date.now() - f.t < 10 * 60000 ? f.n + 1 : 1, t: Date.now() });
     return { error: "That email and password do not match an active account.", status: 401 };
   }

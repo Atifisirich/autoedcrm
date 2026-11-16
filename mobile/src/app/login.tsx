@@ -13,6 +13,7 @@ export default function Login() {
   const [error, setError] = useState("");
   const [code, setCode] = useState("");
   const [needCode, setNeedCode] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -36,8 +37,9 @@ export default function Login() {
           </View>
           <Text style={[s.h1, { marginBottom: 4 }]}>Sign in</Text>
           <Text style={[s.muted, { marginBottom: 16 }]}>Use the same email and password as the web app.</Text>
-          <Field label="Work email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" autoComplete="email" testID="email" />
-          <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="password" onSubmitEditing={submit} testID="password" />
+          <Field label="Work email" value={email} onChangeText={(v) => setEmail(v.trim())} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="email" testID="email" />
+          <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} autoComplete="password" onSubmitEditing={submit} testID="password" />
+          <Pressable onPress={() => setShowPassword(!showPassword)} style={{ marginTop: -6, marginBottom: 12 }} accessibilityRole="button"><Text style={[s.muted, { color: C.brand }]}>{showPassword ? "Hide password" : "Show password"}</Text></Pressable>
           {needCode && <Field label="6-digit code from your authenticator app" value={code} onChangeText={setCode} keyboardType="number-pad" autoComplete="one-time-code" autoFocus testID="code" />}
           {showServer && <Field label="School server address" value={server} onChangeText={setServer} autoCapitalize="none" keyboardType="url" />}
           <ErrorText>{error}</ErrorText>

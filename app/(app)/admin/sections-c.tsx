@@ -145,7 +145,7 @@ export async function Data({ ctx }: { ctx: Ctx }) {
       <section className="card">
         <div className="card-h">Import a spreadsheet (CSV)</div>
         <form action={importCsv} className="grid items-end gap-3 p-4 md:grid-cols-4">
-          <label className="md:col-span-2"><span className="label">File: needs "Student name" and "Mobile"; also reads Parent name, Email, Grade, Source</span><input type="file" name="file" accept=".csv,text/csv" required className="input" /></label>
+          <label className="md:col-span-2"><span className="label">File: needs "Student name" and "Mobile"; also reads Parent name, Email, Grade, Source, Stage and Sub stage (stages from ExtraaEdge and similar CRMs are mapped automatically)</span><input type="file" name="file" accept=".csv,text/csv" required className="input" /></label>
           <label><span className="label">Branch</span><select name="branch_id" className="input">{ctx.branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></label>
           <label><span className="label">Bring in as</span><select name="as" className="input"><option value="prospect">Prospect data (no messages sent)</option><option value="enquiry">Live enquiries (workflows run)</option></select></label>
           <label><span className="label">If the family already exists</span><select name="strategy" className="input"><option value="review">Send to the review queue</option><option value="skip">Skip the row</option><option value="touch">Add as re-enquiry / sibling</option></select></label>

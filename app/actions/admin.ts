@@ -8,6 +8,7 @@ import { actorOf, flash, guard, str } from "@/lib/guard";
 import { adminSections, CAPS, isFullAdmin } from "@/lib/perm";
 import { PACKS, seedProgrammes } from "@/lib/seed";
 import { hashKey, parseCsv } from "@/lib/util";
+import { mapStage } from "@/lib/migration";
 
 async function admin(section: string) {
   const ctx = await guard();
@@ -360,7 +361,7 @@ export async function integrationAction(fd: FormData) {
 
 // ----- data: import with review queue and undo (CAP-08, DUP-03, HUB-04) -----
 
-const ALIASES: Record<string, string[]> = { studentName: ["student", "student name", "child", "child name", "name"], guardianName: ["parent", "parent name", "guardian", "father name", "father", "mother name"], mobile: ["mobile", "phone", "mobile number", "contact", "phone number"], email: ["email", "email id"], grade: ["grade", "class", "course"], source: ["source", "lead source"] };
+const ALIASES: Record<string, string[]> = { studentName: ["student", "student name", "child", "child name", "name"], guardianName: ["parent", "parent name", "guardian", "father name", "father", "mother name"], mobile: ["mobile", "phone", "mobile number", "contact", "phone number"], email: ["email", "email id"], grade: ["grade", "class", "course"], source: ["source", "lead source"], stage: ["stage", "status", "lead stage", "lead status"], subStage: ["sub stage", "sub-stage", "substage", "sub status"] };
 
 export async function importCsv(fd: FormData) {
   const ctx = await admin("data");
@@ -377,25 +378,37 @@ export async function importCsv(fd: FormData) {
   const batch = await insert("import_batches", { tenant_id: ctx.tenantId, file_name: file.name, total: rows.length - 1, created_by: ctx.user.id });
   const grades: string[] = ctx.tenant.settings.grades ?? [];
   let created = 0, duplicates = 0, failed = 0;
+  const unmapped = new Set<string>();
   const seen = new Set<string>();
   for (const r of rows.slice(1)) {
     if (r.every((c) => !c.trim())) continue;
     const get = (k: string) => (col(k) >= 0 ? (r[col(k)] ?? "").trim() : "");
-    const data = { studentName: get("studentName"), guardianName: get("guardianName"), mobile: normMobile(get("mobile")), email: get("email"), grade: get("grade"), source: get("source") };
+    const data = { studentName: get("studentName"), guardianName: get("guardianName"), mobile: normMobile(get("mobile")), email: get("email"), grade: get("grade"), source: get("source"), stage: get("stage"), subStage: get("subStage") };
     const row = (status: string, extra: Record<string, any> = {}) => insert("import_rows", { tenant_id: ctx.tenantId, batch_id: batch.id, data, status, ...extra });
     const error = !data.studentName ? "Student name is missing." : !validMobile(data.mobile) ? "Mobile number is not a valid 10-digit Indian mobile." : data.grade && !grades.includes(data.grade) ? `Grade "${data.grade}" is not one of your grades (${grades.slice(0, 4).join(", ")}…).` : seen.has(data.mobile + data.studentName.toLowerCase()) ? "Same student and mobile appear earlier in this file." : null;
     if (error) { failed++; await row("failed", { error }); continue; }
     seen.add(data.mobile + data.studentName.toLowerCase());
     const match = await findHousehold(ctx.tenantId, { mobile: data.mobile, email: data.email });
     if (match && strategy !== "touch") { duplicates++; await row(strategy === "skip" ? "skipped" : "review", { match_household_id: match.household_id }); continue; }
+    const mapped = data.stage ? mapStage(data.stage, data.subStage) : null;
+    if (data.stage && !mapped) unmapped.add(data.stage);
     const res = await captureEnquiry(ctx.tenantId, { ...data, guardianName: data.guardianName || "Parent", grade: data.grade || undefined, branchId, yearId: ctx.yearId, channel: "Data", source: data.source || `Import: ${file.name}`, asProspect: fd.get("as") !== "enquiry", consent: { source: str(fd, "consent_basis") || "Imported list" }, tags: str(fd, "tag") ? [str(fd, "tag")] : [] }, actorOf(ctx));
+    // Migrated records keep their place in the journey (Appendix B), without firing welcome workflows again.
+    if (res.ok && res.status === "created" && mapped) {
+      const st = await stageByName(ctx.tenantId, mapped.stage);
+      if (st) {
+        await q("update enquiries set stage_id=$2, temperature=coalesce($3, temperature), closure_reason=case when $4 then 'Imported as closed' else closure_reason end where id=$1", [res.enquiryId, st.id, mapped.temperature ?? null, st.is_closed]);
+        await logActivity(ctx.tenantId, { householdId: res.householdId, enquiryId: res.enquiryId, type: "system", content: `Imported from "${file.name}" with stage "${data.stage}${data.subStage ? " / " + data.subStage : ""}", mapped to ${mapped.stage}.` });
+        if (st.is_closed || st.is_won || st.exempt_next_action) await q("update tasks set status='cancelled' where enquiry_id=$1 and status='open'", [res.enquiryId]);
+      }
+    }
     if (!res.ok) { failed++; await row("failed", { error: res.error }); }
     else if (res.status === "created") { created++; await row("created", { enquiry_id: res.enquiryId }); }
     else { duplicates++; await row("merged", { enquiry_id: res.enquiryId, match_household_id: res.householdId }); }
   }
   await update("import_batches", ctx.tenantId, batch.id, { created, duplicates, failed });
   await audit(ctx.tenantId, actorOf(ctx), "import", "enquiry", batch.id, `Imported ${file.name}: ${created} created, ${duplicates} duplicates, ${failed} failed`);
-  await flash(`Import finished: ${created} created, ${duplicates} already known${strategy === "review" && duplicates ? " (in the review queue)" : ""}, ${failed} with problems.`);
+  await flash(`Import finished: ${created} created, ${duplicates} already known${strategy === "review" && duplicates ? " (in the review queue)" : ""}, ${failed} with problems.` + (unmapped.size ? ` Stages not recognised (kept at the start of the pipeline): ${[...unmapped].slice(0, 5).join(", ")}.` : ""));
   done("/");
 }
 

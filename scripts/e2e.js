@@ -152,7 +152,7 @@ const settle = (page) => page.waitForLoadState("networkidle");
   await shot(a, "e2e-workflow");
 
   const csv = path.join(out ?? ".", "e2e-import.csv");
-  fs.writeFileSync(csv, `Student name,Parent name,Mobile,Grade\nImport One,Parent One,96${stamp}1,Grade 2\nImport Two,Parent Two,96${stamp}2,Grade 2\nTara Example,Rohit Example,${mobile},Grade 3\nBad Row,Nobody,12345,Grade 2\n`);
+  fs.writeFileSync(csv, `Student name,Parent name,Mobile,Grade,Stage,Sub stage\nImport One,Parent One,96${stamp}1,Grade 2,Follow-up (2026),Campus visit planned\nImport Two,Parent Two,96${stamp}2,Grade 2,Interested,Hot\nTara Example,Rohit Example,${mobile},Grade 3,Untouched,\nBad Row,Nobody,12345,Grade 2,Junk,\n`);
   await a.goto(BASE + "/admin/data", { waitUntil: "networkidle" });
   await a.setInputFiles("input[name=file]", csv);
   await a.fill("input[name=consent_basis]", "E2E test list");
@@ -160,6 +160,9 @@ const settle = (page) => page.waitForLoadState("networkidle");
   await a.waitForSelector("text=Duplicate review queue");
   body = await text(a);
   ok("Import: 2 created, duplicate sent to review, bad row explained", body.includes("Duplicate review queue · 1") && body.includes("not a valid 10-digit Indian mobile"));
+  await a.goto(BASE + "/leads?year=all&q=Import%20One", { waitUntil: "networkidle" });
+  ok("Imported stage is mapped (Follow-up / Campus visit planned -> Visit scheduled)", (await text(a)).includes("Visit scheduled"));
+  await a.goto(BASE + "/admin/data", { waitUntil: "networkidle" });
   await a.click("button:has-text('Undo import')");
   await a.waitForSelector("text=Undone");
   await a.goto(BASE + "/leads?year=all&q=Import%20One", { waitUntil: "networkidle" });

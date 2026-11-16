@@ -9,8 +9,9 @@ import { Bars, Empty, Meter, PageHeader, Stat } from "@/components/ui";
  * Role dashboards and the standard report set (REP-01..03, KPI definitions in PRD section 16).
  * Every number links to the records behind it; everything follows the year and branch in the header.
  */
-export default async function ReportsPage() {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ by?: string }> }) {
   const ctx = await requireCtx("reports");
+  const { by } = await searchParams;
   const ps: any[] = [];
   const scope = scopeSql(ctx, ps) + ` and e.year_id=$${ps.push(ctx.yearId)}`;
   const J = "from enquiries e join stages s on s.id=e.stage_id join phases p on p.id=s.phase_id";
@@ -55,6 +56,14 @@ export default async function ReportsPage() {
        from tasks k join enquiries e on e.id=k.enquiry_id where ${scope} and k.status<>'cancelled'`, ps),
   ]);
   const K = k!;
+  // Any dropdown custom field can be used as a report dimension (CF-01).
+  const byFields = (await q("select key, label from custom_fields where tenant_id=$1 and entity='enquiry' and active and type='select' and not sensitive order by position", [ctx.tenantId])) as { key: string; label: string }[];
+  const byField = byFields.find((f) => f.key === by) ?? byFields[0];
+  const byRows = byField
+    ? await q(`select coalesce(nullif(e.custom->>$${ps.length + 1}, ''), 'Not filled') as v, count(*) filter (where ${lead})::int as enquiries,
+         count(*) filter (where exists (select 1 from visits v where v.enquiry_id=e.id and v.status='done'))::int as visited, count(*) filter (where s.is_won)::int as admitted
+       ${J} where ${scope} group by 1 order by 2 desc`, [...ps, byField.key])
+    : [];
   const forecast = Math.round(K.admitted + K.weighted);
   const capacity = seats.reduce((a, r) => a + r.capacity, 0);
   const year = ctx.years.find((y) => y.id === ctx.yearId)?.name;
@@ -109,6 +118,16 @@ export default async function ReportsPage() {
                 <div className="card-h">Branch comparison</div>
                 <table className="tbl"><thead><tr><th>Branch</th><th>Enquiries</th><th>Visited</th><th>Enquiry to visit</th><th>Admitted</th><th>Conversion</th></tr></thead>
                   <tbody>{branches.map((b) => <tr key={b.id}><td className="font-medium">{b.name}</td><td><Link className="link" href={`/leads?branch=${b.id}`}>{b.enquiries}</Link></td><td>{b.visited}</td><td>{pct(b.visited, b.enquiries)}</td><td>{b.admitted}</td><td>{pct(b.admitted, b.enquiries)}</td></tr>)}</tbody></table>
+              </section>
+            )}
+            {byFields.length > 0 && (
+              <section className="card">
+                <div className="card-h">
+                  <span>Conversion by {byField?.label ?? "field"}</span>
+                  <form className="flex gap-1"><select name="by" defaultValue={byField?.key} className="input !py-1 text-xs" aria-label="Break down by">{byFields.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}</select><button className="btn btn-sm">Show</button></form>
+                </div>
+                <table className="tbl"><thead><tr><th>{byField?.label}</th><th>Enquiries</th><th>Visited</th><th>Admitted</th><th>Conversion</th></tr></thead>
+                  <tbody>{byRows.map((r) => <tr key={r.v}><td className="font-medium">{r.v}</td><td><Link className="link" href={r.v === "Not filled" ? "/leads" : `/leads?cf_${byField!.key}=${encodeURIComponent(r.v)}`}>{r.enquiries}</Link></td><td>{r.visited}</td><td>{r.admitted}</td><td>{pct(r.admitted, r.enquiries)}</td></tr>)}</tbody></table>
               </section>
             )}
             <section className="card">

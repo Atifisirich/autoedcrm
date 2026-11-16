@@ -30,6 +30,10 @@ export function leadFilter(ctx: Ctx, sp: SP): { where: string; params: any[] } {
   if (sp.to) add("e.created_at < ?::date + 1", sp.to);
   if (sp.minscore) add("e.score >= ?", Number(sp.minscore) || 0);
   if (sp.cf && sp.cfv) { params.push(sp.cf); where += ` and e.custom->>$${params.length}`; params.push(sp.cfv); where += `=$${params.length}`; }
+  for (const [k, v] of Object.entries(sp)) {
+    if (!k.startsWith("cf_") || !v || !/^cf_[a-z0-9_]{1,60}$/.test(k)) continue;
+    params.push(k.slice(3)); where += ` and e.custom->>$${params.length}`; params.push(v); where += `=$${params.length}`;
+  }
   if (sp.open === "1") where += " and not s.is_closed and not s.is_won";
   if (sp.won === "1") where += " and s.is_won";
   if (sp.closed === "1") where += " and s.is_closed";

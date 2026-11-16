@@ -65,7 +65,7 @@ export function Toast() {
 }
 
 type Opt = { id: string; name: string };
-export type QuickAddData = { branches: Opt[]; grades: string[]; boards: string[]; sources: { id: string; name: string; channel: string }[]; branchId: string | null; canCreate: boolean };
+export type QuickAddData = { branches: Opt[]; grades: string[]; boards: string[]; sources: { id: string; name: string; channel: string }[]; branchId: string | null; canCreate: boolean; fields?: { key: string; label: string; options: string[]; required: boolean }[] };
 
 type Dup = { householdId: string; guardian: string; enquiries: { id: string; student: string; grade: string; stage: string; owner: string; year: string }[] } | null;
 
@@ -130,6 +130,14 @@ export function QuickAdd({ data, open, onClose }: { data: QuickAddData; open: bo
             <label className="block"><span className="label">Source</span>
               <select name="sourceId" required className="input" defaultValue=""><option value="" disabled>Choose</option>{data.sources.map((s) => <option key={s.id} value={s.id}>{s.channel}: {s.name}</option>)}</select></label>
           </div>
+          {(data.fields ?? []).length > 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              {data.fields!.map((f) => (
+                <label key={f.key} className="block"><span className="label">{f.label}{f.required ? "" : " (optional)"}</span>
+                  <select name={`cf_${f.key}`} required={f.required} defaultValue="" className="input"><option value="">Choose</option>{f.options.map((o) => <option key={o}>{o}</option>)}</select></label>
+              ))}
+            </div>
+          )}
           <label className="block"><span className="label">How did they hear about us? (optional)</span><input name="heardAbout" className="input" /></label>
           <label className="block"><span className="label">Note (optional)</span><textarea name="note" rows={2} className="input" /></label>
           <label className="flex items-start gap-2 text-xs text-slate-600"><input type="checkbox" name="consent" defaultChecked className="mt-0.5" /> The parent agreed to be contacted about admissions by call, WhatsApp, SMS and email.</label>

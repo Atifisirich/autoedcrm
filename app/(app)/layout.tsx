@@ -14,10 +14,11 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   await tick(ctx.tenantId);
   const p = ctx.perms;
   const own = leadScope(p) === "own";
-  const [notes, unread, sources, overdue, inbox] = await Promise.all([
+  const [notes, unread, sources, fields, overdue, inbox] = await Promise.all([
     q("select * from notifications where tenant_id=$1 and user_id=$2 order by created_at desc limit 20", [ctx.tenantId, ctx.user.id]),
     one("select count(*)::int n from notifications where tenant_id=$1 and user_id=$2 and not read", [ctx.tenantId, ctx.user.id]),
     q("select id, name, channel from sources where tenant_id=$1 and active order by channel, name", [ctx.tenantId]),
+    q("select key, label, options, required from custom_fields where tenant_id=$1 and entity='enquiry' and active and type='select' and not sensitive order by position", [ctx.tenantId]),
     one("select count(*)::int n from tasks where tenant_id=$1 and owner_id=$2 and status='open' and due_at<now()", [ctx.tenantId, ctx.user.id]),
     one(
       `select count(distinct m.household_id)::int n from messages m join enquiries e on e.household_id=m.household_id
@@ -60,7 +61,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {ctx.impersonatorId && <div className="bg-amber-400 px-4 py-1.5 text-center text-xs font-semibold text-slate-900">AutoED support session: you are viewing as {ctx.user.name}. Every action is logged and visible to the school.</div>}
         {ctx.tenant.status === "suspended" && <div className="bg-rose-600 px-4 py-1.5 text-center text-xs font-semibold text-white">This account is suspended. You can view and export data but cannot make changes.</div>}
         <TopBar
-          data={{ branches: ctx.branches.map((b) => ({ id: b.id, name: b.name })), grades: s.grades ?? [], boards: s.boards ?? [], sources: sources as any, branchId: ctx.branchId, canCreate: canCreateLeads(p) }}
+          data={{ branches: ctx.branches.map((b) => ({ id: b.id, name: b.name })), grades: s.grades ?? [], boards: s.boards ?? [], sources: sources as any, branchId: ctx.branchId, canCreate: canCreateLeads(p), fields: fields as any }}
           notes={notes.map((n) => ({ id: n.id, title: n.title, link: n.link, category: n.category, read: n.read, when: rel(n.created_at) }))}
           unread={unread!.n}
           menu={<MenuButton />}

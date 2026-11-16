@@ -264,3 +264,13 @@ describe("message safeguards and team scope", () => {
     await q("update users set reports_to=null where id=$1", [users[1]]);
   });
 });
+
+describe("workflow conditions", () => {
+  it("can test standard and custom fields", async () => {
+    const { conditionsPass } = await import("@/lib/workflows");
+    const e = { grade: "Grade 1", custom: { transport_required: "Yes" } };
+    expect(conditionsPass([{ field: "custom.transport_required", op: "in", value: ["Yes"] }], e)).toBe(true);
+    expect(conditionsPass([{ field: "custom.transport_required", op: "ne", value: "Yes" }], e)).toBe(false);
+    expect(conditionsPass([{ field: "grade", op: "in", value: ["Grade 2", "Grade 3"] }], e)).toBe(false);
+  });
+});

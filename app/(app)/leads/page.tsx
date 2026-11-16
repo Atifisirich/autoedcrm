@@ -3,7 +3,7 @@ import { requireCtx } from "@/lib/auth";
 import { q } from "@/lib/db";
 import { fmtDate, rel } from "@/lib/fmt";
 import { CHIPS, countLeads, listLeads, pipeline, qs, stageCounts, type SP } from "@/lib/leads";
-import { canEditLeads, canMessage, has, lvl } from "@/lib/perm";
+import { canEditLeads, canMessage, has, lvl, seesSensitive } from "@/lib/perm";
 import { Badge, Empty, PageHeader, Temp } from "@/components/ui";
 import { deleteView, saveView } from "@/app/actions/leads";
 import { Kanban, LeadTable, type Lead } from "./LeadsClient";
@@ -27,11 +27,14 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
     q("select * from saved_views where tenant_id=$1 and (user_id=$2 or shared) order by name", [ctx.tenantId, ctx.user.id]),
     q("select distinct channel from sources where tenant_id=$1 order by 1", [ctx.tenantId]),
   ]);
+  const customFields = (await q("select key, label, type, options, sensitive from custom_fields where tenant_id=$1 and entity='enquiry' and active order by position", [ctx.tenantId]))
+    .map((f) => ({ key: f.key as string, label: f.label as string, type: f.type as string, options: f.options as string[], hidden: f.sensitive && !seesSensitive(ctx.perms) }));
   const now = Date.now();
   const leads: Lead[] = rows.map((r) => ({
     id: r.id, household_id: r.household_id, student: r.student, guardian: r.guardian, mobile: r.mobile, grade: r.grade, branch: r.branch, stage: r.stage, stage_id: r.stage_id, color: r.color, phase: r.phase,
     owner: r.owner, score: r.score, temperature: r.temperature, source: r.source, created: fmtDate(r.created_at), next: r.next_due ? rel(r.next_due) : null, nextTitle: r.next_title,
     overdue: !!r.next_due && new Date(r.next_due).getTime() < now, reenquired: r.reenquired, family: r.family_size, untouched: !r.first_response_at, tags: r.tags,
+    custom: Object.fromEntries(customFields.map((f) => [f.key, f.hidden ? (r.custom?.[f.key] ? "••••••" : "") : String(r.custom?.[f.key] ?? "")])),
   }));
   const chips = (sp.chip ?? "").split(",").filter(Boolean);
   const toggleChip = (c: string) => (chips.includes(c) ? chips.filter((x) => x !== c) : [...chips, c]).join(",") || undefined;
@@ -75,7 +78,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
         ))}
       </div>
 
-      <details className="card mb-3" open={!!(sp.q || sp.owner || sp.grade || sp.channel || sp.temp || sp.from || sp.to || sp.minscore)}>
+      <details className="card mb-3" open={!!(sp.q || sp.owner || sp.grade || sp.channel || sp.temp || sp.from || sp.to || sp.minscore || Object.keys(sp).some((k) => k.startsWith("cf_") && sp[k]))}>
         <summary className="cursor-pointer px-4 py-2 text-xs font-semibold text-slate-600">Filters and saved views</summary>
         <div className="flex flex-wrap items-end gap-2 border-t border-slate-100 px-4 py-3">
           <form className="flex flex-wrap items-end gap-2">
@@ -85,6 +88,9 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
             <label><span className="label">Grade</span><select name="grade" defaultValue={sp.grade ?? ""} className="input w-28"><option value="">Any</option>{(ctx.tenant.settings.grades ?? []).map((g: string) => <option key={g}>{g}</option>)}</select></label>
             <label><span className="label">Channel</span><select name="channel" defaultValue={sp.channel ?? ""} className="input w-32"><option value="">Any</option>{channels.map((c) => <option key={c.channel}>{c.channel}</option>)}</select></label>
             <label><span className="label">Temperature</span><select name="temp" defaultValue={sp.temp ?? ""} className="input w-24"><option value="">Any</option><option>Hot</option><option>Warm</option><option>Cold</option></select></label>
+            {customFields.filter((f) => f.type === "select" && !f.hidden).map((f) => (
+              <label key={f.key}><span className="label">{f.label}</span><select name={`cf_${f.key}`} defaultValue={sp[`cf_${f.key}`] ?? ""} className="input w-32"><option value="">Any</option>{f.options.map((o) => <option key={o}>{o}</option>)}</select></label>
+            ))}
             <label><span className="label">Min score</span><input name="minscore" type="number" min={0} max={100} defaultValue={sp.minscore} className="input w-20" /></label>
             <label><span className="label">Created from</span><input name="from" type="date" defaultValue={sp.from} className="input w-36" /></label>
             <label><span className="label">to</span><input name="to" type="date" defaultValue={sp.to} className="input w-36" /></label>
@@ -132,7 +138,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
           ))}
         </ul>
         <div className="hidden md:block">
-        <LeadTable leads={leads} total={total} query={queryString} stages={stages as any} users={users as any} templates={templates as any} reasons={reasons} can={can} />
+        <LeadTable leads={leads} total={total} query={queryString} stages={stages as any} users={users as any} templates={templates as any} reasons={reasons} can={can} fields={customFields.map((f) => ({ key: f.key, label: f.label }))} />
         </div>
         </>
       )}

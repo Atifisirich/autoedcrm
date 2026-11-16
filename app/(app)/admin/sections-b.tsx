@@ -7,7 +7,9 @@ import { canPublishWorkflows } from "@/lib/perm";
 import { RECIPES, TRIGGERS, type Step } from "@/lib/workflows";
 import { Badge, Empty, Field } from "@/components/ui";
 import { saveForm, saveRule, saveScoring, saveSource, saveTemplate } from "@/app/actions/admin";
-import { createWorkflow, deleteWorkflow, editSteps, installRecipe, testWorkflow, workflowStatus } from "@/app/actions/ops";
+import { createWorkflow, deleteWorkflow, editConditions, editSteps, installRecipe, testWorkflow, workflowStatus } from "@/app/actions/ops";
+
+const condLabel = (field: string, fields: [string, string][]) => fields.find(([k]) => k === field)?.[1] ?? field.replace("custom.", "").replace(/_/g, " ");
 import { Simulator } from "./Simulator";
 
 export async function Sources({ ctx }: { ctx: Ctx }) {
@@ -167,6 +169,8 @@ export async function Workflows({ ctx, sp }: { ctx: Ctx; sp: Record<string, stri
     const templates = await q("select distinct name from templates where tenant_id=$1 and status='approved' order by 1", [ctx.tenantId]);
     const stages = await q("select name from stages where tenant_id=$1 and active order by position", [ctx.tenantId]);
     const steps = cur.steps as Step[];
+    const custom = await q("select key, label from custom_fields where tenant_id=$1 and entity='enquiry' and active", [ctx.tenantId]);
+    const condFields: [string, string][] = [["grade", "Grade"], ["board", "Board"], ["branch_name", "Branch"], ["stage_name", "Stage"], ["temperature", "Temperature"], ["closure_reason", "Closure reason"], ...custom.map((f) => ["custom." + f.key, f.label] as [string, string])];
     return (
       <div className="space-y-4">
         <Link href="/admin/workflows" className="muted text-xs hover:underline">← All workflows</Link>
@@ -175,7 +179,24 @@ export async function Workflows({ ctx, sp }: { ctx: Ctx; sp: Record<string, stri
           <div className="p-4">
             <p className="muted">{cur.description}</p>
             <ol className="mt-4 space-y-0">
-              <li className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2"><span className="text-xs font-semibold text-brand-900">WHEN</span> {TRIGGERS[cur.trigger] ?? cur.trigger}{(cur.conditions as any[]).map((c, i) => <span key={i} className="muted"> · only if {c.field.replace("_", " ")} is {Array.isArray(c.value) ? c.value.join(" or ") : c.value}</span>)}</li>
+              <li className="rounded-md border border-brand-200 bg-brand-50 px-3 py-2">
+                <span className="text-xs font-semibold text-brand-900">WHEN</span> {TRIGGERS[cur.trigger] ?? cur.trigger}
+                {(cur.conditions as any[]).map((c, i) => (
+                  <form key={i} action={editConditions} className="mt-1 flex items-center gap-2 text-xs">
+                    <input type="hidden" name="id" value={cur.id} /><input type="hidden" name="index" value={i} />
+                    <span className="muted">AND {condLabel(c.field, condFields)} {c.op === "ne" ? "is not" : "is"} {Array.isArray(c.value) ? c.value.join(" or ") : c.value}</span>
+                    <button name="what" value="remove" className="link">remove</button>
+                  </form>
+                ))}
+                <form action={editConditions} className="mt-2 flex flex-wrap items-end gap-2 text-xs">
+                  <input type="hidden" name="id" value={cur.id} /><input type="hidden" name="what" value="add" />
+                  <span className="font-semibold text-brand-900">Only if</span>
+                  <select name="field" className="input !w-auto !py-1 text-xs">{condFields.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+                  <select name="op" className="input !w-auto !py-1 text-xs"><option value="in">is one of</option><option value="ne">is not</option></select>
+                  <input name="value" required placeholder="Value (commas for several)" className="input !w-56 !py-1 text-xs" />
+                  <button className="btn btn-sm">Add condition</button>
+                </form>
+              </li>
               {steps.map((s, i) => (
                 <li key={i}>
                   <div className="ml-6 h-4 w-px bg-slate-300" />

@@ -17,6 +17,7 @@ export async function quickAdd(_: any, fd: FormData) {
     ctx.tenantId,
     {
       studentName: str(fd, "studentName"), guardianName: str(fd, "guardianName"), mobile: str(fd, "mobile"), branchId, yearId: ctx.yearId, grade: str(fd, "grade") || undefined, board: str(fd, "board") || undefined,
+      custom: Object.fromEntries([...fd.keys()].filter((k) => /^cf_[a-z0-9_]+$/.test(k) && str(fd, k)).map((k) => [k.slice(3), str(fd, k)])),
       sourceId: str(fd, "sourceId") || undefined, heardAbout: str(fd, "heardAbout") || undefined, note: str(fd, "note") || undefined, dob: str(fd, "dob") || undefined,
       consent: { source: fd.get("consent") ? "Verbal consent recorded by " + ctx.user.name : "Not recorded" },
       preferOwnerId: leadScope(ctx.perms) === "own" ? ctx.user.id : undefined,

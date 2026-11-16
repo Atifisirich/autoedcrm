@@ -130,3 +130,22 @@ export async function deleteWorkflow(fd: FormData) {
   await q("delete from workflows where tenant_id=$1 and id=$2 and status<>'published'", [ctx.tenantId, str(fd, "id")]);
   revalidatePath("/admin/workflows");
 }
+
+export async function editConditions(fd: FormData) {
+  const ctx = await guard("workflows");
+  const wf = await one("select * from workflows where tenant_id=$1 and id=$2", [ctx.tenantId, str(fd, "id")]);
+  if (!wf) return;
+  if (wf.status === "published" && !canPublishWorkflows(ctx.perms)) throw new Error("Pause the workflow before editing it, or ask someone who can publish.");
+  let conds = [...(wf.conditions as any[])];
+  if (str(fd, "what") === "remove") conds.splice(Number(str(fd, "index")), 1);
+  else {
+    const field = str(fd, "field");
+    if (!/^(grade|board|branch_name|stage_name|temperature|closure_reason|custom\.[a-z0-9_]+)$/.test(field)) return flash("Choose a field.", "error");
+    const values = str(fd, "value").split(",").map((v) => v.trim()).filter(Boolean);
+    if (!values.length) return flash("Type a value.", "error");
+    conds = [...conds, str(fd, "op") === "ne" ? { field, op: "ne", value: values[0] } : { field, op: "in", value: values }];
+  }
+  await update("workflows", ctx.tenantId, wf.id, { conditions: conds, version: wf.version + 1, updated_at: new Date() });
+  await audit(ctx.tenantId, actorOf(ctx), "config", "workflow", wf.id, `Changed conditions of workflow "${wf.name}"`, wf.conditions, conds);
+  revalidatePath("/admin/workflows");
+}

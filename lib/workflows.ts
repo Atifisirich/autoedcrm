@@ -70,9 +70,9 @@ export const RECIPES: Recipe[] = [
     steps: [{ type: "wait", mins: 60 * DAY }, { type: "send", channel: "whatsapp", template: "Checking in" }] },
 ];
 
-function conditionsPass(conds: Row[], e: Row): boolean {
+export function conditionsPass(conds: Row[], e: Row): boolean {
   return conds.every((c) => {
-    const v = e[c.field];
+    const v = String(c.field).startsWith("custom.") ? e.custom?.[String(c.field).slice(7)] : e[c.field];
     if (c.op === "in") return (c.value as any[]).includes(v);
     if (c.op === "ne") return v !== c.value;
     return v === c.value;

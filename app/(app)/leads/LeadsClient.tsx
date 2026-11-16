@@ -7,7 +7,7 @@ import { Badge, DOTS, Temp } from "@/components/ui";
 
 export type Lead = {
   id: string; household_id: string; student: string; guardian: string | null; mobile: string | null; grade: string | null; branch: string; stage: string; stage_id: string; color: string; phase: string;
-  owner: string; score: number; temperature: string | null; source: string | null; created: string; next: string | null; nextTitle: string | null; overdue: boolean; reenquired: boolean; family: number; untouched: boolean; tags: string[];
+  owner: string; score: number; temperature: string | null; source: string | null; created: string; next: string | null; nextTitle: string | null; overdue: boolean; reenquired: boolean; family: number; untouched: boolean; tags: string[]; custom?: Record<string, string>;
 };
 type Stage = { id: string; name: string; color: string; phase_name: string; required_fields: string[]; is_closed: boolean };
 type Opt = { id: string; name: string };
@@ -19,7 +19,9 @@ function NextCell({ l }: { l: Lead }) {
   return <span className={l.overdue ? "font-medium text-rose-700" : ""} title={l.nextTitle ?? ""}>{l.overdue ? "Overdue: " : ""}{l.next}</span>;
 }
 
-export function LeadTable({ leads, total, query, stages, users, templates, reasons, can }: { leads: Lead[]; total: number; query: string; stages: Stage[]; users: Opt[]; templates: Opt[]; reasons: string[]; can: { bulk: boolean; reassign: boolean; edit: boolean; message: boolean; export: boolean } }) {
+export function LeadTable({ leads, total, query, stages, users, templates, reasons, can, fields = [] }: { leads: Lead[]; total: number; query: string; stages: Stage[]; users: Opt[]; templates: Opt[]; reasons: string[]; can: { bulk: boolean; reassign: boolean; edit: boolean; message: boolean; export: boolean }; fields?: { key: string; label: string }[] }) {
+  // Custom fields are columns like any other (CF-01); they start hidden so the default table stays readable.
+  const cols: [string, string][] = [...COLS, ...fields.map((f) => ["cf:" + f.key, f.label] as [string, string])];
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [all, setAll] = useState(false);
   const [hidden, setHidden] = useState<string[]>([]);
@@ -28,8 +30,8 @@ export function LeadTable({ leads, total, query, stages, users, templates, reaso
   useEffect(() => {
     try { setHidden(JSON.parse(localStorage.getItem("aed_cols") ?? "[]")); setDense(localStorage.getItem("aed_dense") === "1"); } catch { /* first visit */ }
   }, []);
-  const toggleCol = (k: string) => setHidden((h) => { const n = h.includes(k) ? h.filter((x) => x !== k) : [...h, k]; localStorage.setItem("aed_cols", JSON.stringify(n)); return n; });
-  const show = (k: string) => !hidden.includes(k);
+  const toggleCol = (k: string) => setHidden((h) => { const key = k.startsWith("cf:") ? "+" + k : k; const n = h.includes(key) ? h.filter((x) => x !== key) : [...h, key]; localStorage.setItem("aed_cols", JSON.stringify(n)); return n; });
+  const show = (k: string) => (k.startsWith("cf:") ? hidden.includes("+" + k) : !hidden.includes(k));
   const count = all ? total : sel.size;
   const pad = dense ? "!py-1" : "";
   const stage = stages.find((s) => s.id === action.split(":")[1]);
@@ -63,7 +65,7 @@ export function LeadTable({ leads, total, query, stages, users, templates, reaso
       <div className="flex items-center justify-end gap-3 border-b border-slate-100 px-3 py-1.5 text-xs">
         <details className="relative">
           <summary className="link cursor-pointer list-none">Columns</summary>
-          <div className="card absolute right-0 z-10 mt-1 w-44 p-2 shadow-lg">{COLS.map(([k, label]) => <label key={k} className="flex items-center gap-2 py-0.5"><input type="checkbox" checked={show(k)} onChange={() => toggleCol(k)} />{label}</label>)}</div>
+          <div className="card absolute right-0 z-10 mt-1 w-44 p-2 shadow-lg">{cols.map(([k, label]) => <label key={k} className="flex items-center gap-2 py-0.5"><input type="checkbox" checked={show(k)} onChange={() => toggleCol(k)} />{label}</label>)}</div>
         </details>
         <button className="link" onClick={() => setDense((d) => { localStorage.setItem("aed_dense", d ? "0" : "1"); return !d; })}>{dense ? "Comfortable rows" : "Compact rows"}</button>
       </div>
@@ -72,7 +74,7 @@ export function LeadTable({ leads, total, query, stages, users, templates, reaso
           <thead><tr>
             {can.bulk && <th className="w-8"><input type="checkbox" aria-label="Select all on this page" checked={leads.length > 0 && sel.size === leads.length} onChange={(e) => { setAll(false); setSel(e.target.checked ? new Set(leads.map((l) => l.id)) : new Set()); }} /></th>}
             <th className="sticky left-0 bg-slate-50">Student</th>
-            {COLS.filter(([k]) => show(k)).map(([k, label]) => <th key={k}>{label}</th>)}
+            {cols.filter(([k]) => show(k)).map(([k, label]) => <th key={k}>{label}</th>)}
           </tr></thead>
           <tbody>
             {leads.map((l) => (
@@ -92,6 +94,7 @@ export function LeadTable({ leads, total, query, stages, users, templates, reaso
                 {show("next") && <td className={pad}><NextCell l={l} /></td>}
                 {show("source") && <td className={pad}>{l.source}</td>}
                 {show("created") && <td className={`${pad} whitespace-nowrap`}>{l.created}</td>}
+                {fields.filter((f) => show("cf:" + f.key)).map((f) => <td key={f.key} className={pad}>{l.custom?.[f.key]}</td>)}
               </tr>
             ))}
           </tbody>

@@ -198,3 +198,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ path: s
     default: return fail("Not found.", 404);
   }
 }
+
+export function OPTIONS() {
+  return new Response(null, { status: 204 });
+}

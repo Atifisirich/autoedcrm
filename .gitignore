@@ -8,3 +8,9 @@ next-env.d.ts
 
 # Written by scripts/e2e.js during a run
 e2e-import.csv
+
+mobile/node_modules
+mobile/dist
+mobile/.expo
+mobile/android
+mobile/ios

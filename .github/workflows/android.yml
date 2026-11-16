@@ -1,0 +1,55 @@
+# Builds an installable Android APK of the AutoED app on every push that touches mobile/.
+# Download it from the run's "Artifacts" section. Signed with a debug key unless the
+# ANDROID_KEYSTORE_* secrets are set (needed before publishing to the Play Store).
+name: Android APK
+
+on:
+  push:
+    paths: ["mobile/**", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - name: Generate the native Android project
+        run: npx expo prebuild --platform android --no-install
+      - name: Use the release keystore when configured
+        if: ${{ env.KEYSTORE != '' }}
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE" | base64 -d > android/app/release.keystore
+          cat >> android/gradle.properties <<PROPS
+          AUTOED_STORE_FILE=release.keystore
+          AUTOED_STORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          AUTOED_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}
+          AUTOED_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}
+          PROPS
+          sed -i 's/signingConfig signingConfigs.debug/signingConfig (project.hasProperty("AUTOED_STORE_FILE") ? signingConfigs.release : signingConfigs.debug)/' android/app/build.gradle
+          sed -i '/signingConfigs {/a\        release {\n            if (project.hasProperty("AUTOED_STORE_FILE")) {\n                storeFile file(AUTOED_STORE_FILE)\n                storePassword AUTOED_STORE_PASSWORD\n                keyAlias AUTOED_KEY_ALIAS\n                keyPassword AUTOED_KEY_PASSWORD\n            }\n        }' android/app/build.gradle
+      - name: Build the APK
+        working-directory: mobile/android
+        run: ./gradlew assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: autoed-android-apk
+          path: mobile/android/app/build/outputs/apk/release/*.apk
+          retention-days: 30

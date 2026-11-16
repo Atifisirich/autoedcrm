@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { requireCtx } from "@/lib/auth";
+import { needs2faSetup, requireCtx } from "@/lib/auth";
 import { one, q } from "@/lib/db";
 import { rel } from "@/lib/fmt";
 import { ADMIN_SECTIONS, adminSections } from "@/lib/perm";
@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui";
 
 export default async function AdminHome({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const ctx = await requireCtx();
+  if (needs2faSetup(ctx)) redirect("/account?setup=1");
   const allowed = adminSections(ctx.perms);
   if (!allowed.length) redirect("/?denied=admin");
   const { q: term = "" } = await searchParams;

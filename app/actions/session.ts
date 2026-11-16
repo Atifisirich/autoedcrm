@@ -2,14 +2,22 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
-import { login, logout, requireCtx, startSession } from "@/lib/auth";
+import { login, loginWithCode, logout, requireCtx, startSession } from "@/lib/auth";
 import { insert, one, q } from "@/lib/db";
 import { flash, guard, str } from "@/lib/guard";
 
-export async function loginAction(_: any, fd: FormData) {
+export async function loginAction(_: any, fd: FormData): Promise<{ error?: string; ticket?: string } | null> {
+  if (str(fd, "ticket")) {
+    const dest = await loginWithCode(str(fd, "ticket"), str(fd, "code"));
+    if (dest === "expired") return { error: "That took too long. Sign in again." };
+    if (dest === "locked") return { error: "Too many wrong codes. Wait ten minutes and try again.", ticket: str(fd, "ticket") };
+    if (!dest) return { error: "That code is not right. Codes change every 30 seconds.", ticket: str(fd, "ticket") };
+    redirect(dest);
+  }
   const dest = await login(str(fd, "email"), str(fd, "password"));
   if (dest === "locked") return { error: "Too many wrong attempts. Wait ten minutes and try again, or ask your admin to reset the password." };
   if (!dest) return { error: "That email and password do not match an active account." };
+  if (typeof dest === "object") return { ticket: dest.ticket };
   redirect(dest);
 }
 

@@ -11,13 +11,18 @@ export default function Login() {
   const [server, setServer] = useState(getServer());
   const [showServer, setShowServer] = useState(getServer() !== defaultServer);
   const [error, setError] = useState("");
+  const [code, setCode] = useState("");
+  const [needCode, setNeedCode] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
     setError("");
     setBusy(true);
-    try { await signIn(server, email, password); }
-    catch (e: any) { setError(e.message); }
+    try { await signIn(server, email, password, code); }
+    catch (e: any) {
+      if (e.data?.need2fa) setNeedCode(true);
+      setError(needCode || !e.data?.need2fa ? e.message : "");
+    }
     finally { setBusy(false); }
   };
 
@@ -33,9 +38,10 @@ export default function Login() {
           <Text style={[s.muted, { marginBottom: 16 }]}>Use the same email and password as the web app.</Text>
           <Field label="Work email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" autoComplete="email" testID="email" />
           <Field label="Password" value={password} onChangeText={setPassword} secureTextEntry autoComplete="password" onSubmitEditing={submit} testID="password" />
+          {needCode && <Field label="6-digit code from your authenticator app" value={code} onChangeText={setCode} keyboardType="number-pad" autoComplete="one-time-code" autoFocus testID="code" />}
           {showServer && <Field label="School server address" value={server} onChangeText={setServer} autoCapitalize="none" keyboardType="url" />}
           <ErrorText>{error}</ErrorText>
-          <Button title={busy ? "Signing in…" : "Sign in"} kind="primary" onPress={submit} disabled={busy || !email || !password} testID="signin" />
+          <Button title={busy ? "Signing in…" : needCode ? "Verify" : "Sign in"} kind="primary" onPress={submit} disabled={busy || !email || !password || (needCode && code.length < 6)} testID="signin" />
           {!showServer && <Pressable onPress={() => setShowServer(true)} style={{ marginTop: 14 }}><Text style={[s.muted, { textAlign: "center" }]}>Using a different server?</Text></Pressable>}
         </View>
       </ScrollView>

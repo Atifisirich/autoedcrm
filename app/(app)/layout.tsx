@@ -51,7 +51,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="mt-auto space-y-0.5 border-t border-white/15 pt-2">
           {(has(p, "admin") || has(p, "workflows")) && <NavLink href="/admin">⚙ Admin console</NavLink>}
           <div className="px-3 pt-2 text-xs text-brand-100">
-            <div className="truncate font-medium text-white">{ctx.user.name}</div>
+            <Link href="/account" className="block truncate font-medium text-white hover:underline">{ctx.user.name}</Link>
             <div className="truncate">{ctx.roleName} · {ctx.tenant.name}</div>
             <form action={logoutAction}><button className="mt-1 underline hover:text-white">{ctx.impersonatorId ? "End support session" : "Sign out"}</button></form>
           </div>

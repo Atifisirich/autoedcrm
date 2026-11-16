@@ -4,7 +4,9 @@ import { cache } from "react";
 import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { one, q, type Row } from "./db";
-import { type Cap, type Perms, has, leadScope } from "./perm";
+import { type Cap, type Perms, adminSections, has, leadScope } from "./perm";
+import { decrypt } from "./secrets";
+import { readTicket, signTicket, verifyCode } from "./totp";
 
 const COOKIE = "aed_session";
 
@@ -26,13 +28,36 @@ export type Ctx = {
 
 const fails = ((globalThis as any).__aedFails ??= new Map<string, { n: number; t: number }>()) as Map<string, { n: number; t: number }>;
 
-/** Returns the landing path, null for bad credentials, or "locked" after five failures in ten minutes. */
-export async function login(email: string, password: string): Promise<string | null> {
+/**
+ * Returns the landing path, null for bad credentials, "locked" after five failures in ten minutes,
+ * or a ticket when the account uses two-factor sign-in and a code is needed next.
+ */
+export async function login(email: string, password: string): Promise<string | null | { ticket: string }> {
   const key = email.trim().toLowerCase();
   const f = fails.get(key);
   if (f && f.n >= 5 && Date.now() - f.t < 10 * 60000) return "locked";
   const u = await one("select * from users where lower(email)=$1 and status='active'", [key]);
   if (!u || !(await bcrypt.compare(password, u.password_hash))) {
+    fails.set(key, { n: f && Date.now() - f.t < 10 * 60000 ? f.n + 1 : 1, t: Date.now() });
+    return null;
+  }
+  fails.delete(key);
+  if (u.totp_enabled) return { ticket: signTicket(u.id) };
+  await startSession(u.id);
+  await q("update users set last_login=now() where id=$1", [u.id]);
+  return u.platform_role ? "/platform" : "/";
+}
+
+/** Second step of two-factor sign-in. Five wrong codes lock the account for ten minutes, like passwords. */
+export async function loginWithCode(ticket: string, code: string): Promise<string | null | "locked" | "expired"> {
+  const userId = readTicket(ticket);
+  if (!userId) return "expired";
+  const key = "2fa:" + userId;
+  const f = fails.get(key);
+  if (f && f.n >= 5 && Date.now() - f.t < 10 * 60000) return "locked";
+  const u = await one("select * from users where id=$1 and status='active' and totp_enabled", [userId]);
+  const secret = u?.totp_secret_enc ? decrypt(u.totp_secret_enc) : null;
+  if (!u || !secret || !verifyCode(secret, code)) {
     fails.set(key, { n: f && Date.now() - f.t < 10 * 60000 ? f.n + 1 : 1, t: Date.now() });
     return null;
   }
@@ -46,7 +71,7 @@ export async function login(email: string, password: string): Promise<string | n
  * Mobile app sign-in: same checks and lockout as the web, but returns a bearer token instead of
  * setting a cookie. Platform staff cannot use the school app.
  */
-export async function loginForToken(email: string, password: string, device: string): Promise<{ token: string } | { error: string; status: number }> {
+export async function loginForToken(email: string, password: string, device: string, code = ""): Promise<{ token: string } | { error: string; status: number; need2fa?: boolean }> {
   const key = email.trim().toLowerCase();
   const f = fails.get(key);
   if (f && f.n >= 5 && Date.now() - f.t < 10 * 60000) return { error: "Too many wrong attempts. Wait ten minutes and try again.", status: 429 };
@@ -56,6 +81,14 @@ export async function loginForToken(email: string, password: string, device: str
     return { error: "That email and password do not match an active account.", status: 401 };
   }
   if (!u.tenant_id) return { error: "AutoED staff accounts cannot use the school app.", status: 403 };
+  if (u.totp_enabled) {
+    if (!code) return { error: "Enter the 6-digit code from your authenticator app.", status: 401, need2fa: true };
+    const secret = u.totp_secret_enc ? decrypt(u.totp_secret_enc) : null;
+    if (!secret || !verifyCode(secret, code)) {
+      fails.set(key, { n: f && Date.now() - f.t < 10 * 60000 ? f.n + 1 : 1, t: Date.now() });
+      return { error: "That code is not right. Codes change every 30 seconds.", status: 401, need2fa: true };
+    }
+  }
   fails.delete(key);
   const token = crypto.randomBytes(32).toString("hex");
   await q("insert into sessions (token,user_id,expires_at,device) values ($1,$2, now() + interval '30 days', $3)", [token, u.id, device.slice(0, 120) || "Mobile app"]);
@@ -122,6 +155,11 @@ export async function requireCtx(cap?: Cap): Promise<Ctx> {
   if (ctx.tenant.status === "cancelled" || ctx.tenant.status === "archived") redirect("/login?e=closed");
   if (cap && !has(ctx.perms, cap)) redirect("/?denied=" + cap);
   return ctx;
+}
+
+/** Schools can require two-factor sign-in for everyone who can open the admin console. */
+export function needs2faSetup(ctx: Ctx): boolean {
+  return !!ctx.tenant.settings.require_2fa_admins && !ctx.user.totp_enabled && adminSections(ctx.perms).some((s) => s !== "help") && !ctx.impersonatorId;
 }
 
 export async function requirePlatform(): Promise<Row> {

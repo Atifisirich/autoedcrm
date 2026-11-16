@@ -16,7 +16,7 @@ export type Options = {
   sources: { id: string; name: string; channel: string }[]; templates: { id: string; name: string; channel: string; body: string }[]; taskTypes: Record<string, string>; chips: [string, string][];
 };
 
-type Ctx = { ready: boolean; me: Me | null; options: Options | null; signIn: (server: string, email: string, password: string) => Promise<void>; signOut: () => Promise<void>; refresh: () => Promise<void> };
+type Ctx = { ready: boolean; me: Me | null; options: Options | null; signIn: (server: string, email: string, password: string, code?: string) => Promise<void>; signOut: () => Promise<void>; refresh: () => Promise<void> };
 const SessionCtx = createContext<Ctx>(null as any);
 export const useSession = () => useContext(SessionCtx);
 
@@ -65,9 +65,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     })();
   }, [refresh]);
 
-  const signIn = async (server: string, email: string, password: string) => {
+  const signIn = async (server: string, email: string, password: string, code = "") => {
     await setServer(server);
-    const r = await api<{ token: string }>("login", { body: { email, password, device: `${Device.manufacturer ?? ""} ${Device.modelName ?? Platform.OS}`.trim() } });
+    const r = await api<{ token: string }>("login", { body: { email, password, code, device: `${Device.manufacturer ?? ""} ${Device.modelName ?? Platform.OS}`.trim() } });
     await setToken(r.token);
     await refresh();
     registerPush();

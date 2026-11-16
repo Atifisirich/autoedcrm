@@ -164,8 +164,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ path: s
   const [route] = (await params).path;
   const body = await req.json().catch(() => ({}));
   if (route === "login") {
-    const r = await loginForToken(String(body.email ?? ""), String(body.password ?? ""), String(body.device ?? ""));
-    return "token" in r ? json(r) : fail(r.error, r.status);
+    const r = await loginForToken(String(body.email ?? ""), String(body.password ?? ""), String(body.device ?? ""), String(body.code ?? ""));
+    return "token" in r ? json(r) : json({ error: r.error, need2fa: r.need2fa ?? false }, r.status);
   }
   const ctx = await getCtx();
   if (!ctx) return fail("Please sign in again.", 401);

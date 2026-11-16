@@ -573,6 +573,10 @@ create table if not exists push_tokens (
   updated_at timestamptz not null default now()
 );
 
+alter table users add column if not exists totp_secret_enc text;
+alter table users add column if not exists totp_pending_enc text;
+alter table users add column if not exists totp_enabled boolean not null default false;
+
 -- When hosted on Supabase the public schema is reachable through the auto-generated API.
 -- The app talks to Postgres directly, so lock every table it owns down for API roles.
 do $$

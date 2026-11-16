@@ -26,7 +26,8 @@ export async function saveOrg(fd: FormData) {
     closure_reasons: str(fd, "closure_reasons").split("\n").map((x) => x.trim()).filter(Boolean), doc_types: str(fd, "doc_types").split("\n").map((x) => x.trim()).filter(Boolean),
     privacy_notice: str(fd, "privacy_notice"),
     quiet_hours: { from: Math.min(23, Math.max(0, Number(str(fd, "quiet_from")) || 21)), to: Math.min(23, Math.max(0, Number(str(fd, "quiet_to")) || 8)) },
-    max_auto_per_day: Math.max(1, Number(str(fd, "max_auto_per_day")) || 4) };
+    max_auto_per_day: Math.max(1, Number(str(fd, "max_auto_per_day")) || 4),
+    require_2fa_admins: fd.get("require_2fa_admins") === "on" };
   await q("update tenants set name=$2, settings=$3, branding=$4 where id=$1", [ctx.tenantId, str(fd, "name") || ctx.tenant.name, s, { ...ctx.tenant.branding, color: str(fd, "color") || "#0f6e6e" }]);
   await log(ctx, "organisation", "Updated organisation settings", ctx.tenant.settings, s);
   await flash("Organisation settings saved.");
@@ -144,6 +145,10 @@ export async function userAction(fd: FormData) {
       const open = await one("select count(*)::int n from enquiries e join stages s on s.id=e.stage_id where e.owner_id=$1 and not s.is_closed and not s.is_won", [id]);
       await flash(`${u.name} is paused and signed out.` + (open!.n ? ` They still own ${open!.n} open enquiries: reassign them from Leads.` : ""));
     } else await flash(`${u.name} is active again.`);
+  } else if (what === "reset2fa") {
+    await q("update users set totp_secret_enc=null, totp_pending_enc=null, totp_enabled=false where id=$1", [id]);
+    await q("delete from sessions where user_id=$1", [id]);
+    await flash(`Two-factor sign-in reset for ${u.name}. They can sign in with their password and set it up again.`);
   } else if (what === "reset") {
     const temp = crypto.randomBytes(6).toString("base64url");
     await update("users", ctx.tenantId, id, { password_hash: await hashPassword(temp) });

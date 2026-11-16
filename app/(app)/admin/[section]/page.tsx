@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { requireCtx } from "@/lib/auth";
+import { needs2faSetup, requireCtx } from "@/lib/auth";
 import { ADMIN_SECTIONS, adminSections } from "@/lib/perm";
 import { Fields, Org, Pipeline, Roles, Users } from "../sections-a";
 import { Forms, Routing, Sources, Templates, Workflows } from "../sections-b";
@@ -8,6 +8,7 @@ import { Audit, Data, Help, Integrations, Wallet } from "../sections-c";
 
 export default async function AdminSection({ params, searchParams }: { params: Promise<{ section: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
   const ctx = await requireCtx();
+  if (needs2faSetup(ctx)) redirect("/account?setup=1");
   const { section } = await params;
   const sp = await searchParams;
   const meta = ADMIN_SECTIONS.find(([k]) => k === section);

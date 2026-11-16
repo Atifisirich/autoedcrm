@@ -30,6 +30,7 @@ export async function Org({ ctx }: { ctx: Ctx }) {
           <Field label="Quiet hours: no automated messages from (hour, 0-23)"><input name="quiet_from" type="number" min={0} max={23} defaultValue={s.quiet_hours?.from ?? 21} className="input" /></Field>
           <Field label="… until (hour, 0-23)" hint="Automated messages due in this window wait until it ends. India time."><input name="quiet_to" type="number" min={0} max={23} defaultValue={s.quiet_hours?.to ?? 8} className="input" /></Field>
           <Field label="Most automated messages per family per day" hint="Messages sent by staff and campaigns do not count."><input name="max_auto_per_day" type="number" min={1} defaultValue={s.max_auto_per_day ?? 4} className="input" /></Field>
+          <label className="flex items-center gap-2"><input type="checkbox" name="require_2fa_admins" defaultChecked={!!s.require_2fa_admins} /> Require two-factor sign-in for everyone who can change settings</label>
           <label className="flex items-center gap-2"><input type="checkbox" name="reopen" defaultChecked={s.reopen_on_reenquiry !== false} /> Re-open a closed enquiry when the family enquires again</label>
           <label className="flex items-center gap-2"><input type="checkbox" name="call_recording" defaultChecked={!!s.call_recording} /> Record calls (with announcement) once telephony is connected</label>
           <div className="md:col-span-3"><button className="btn btn-primary">Save organisation settings</button></div>
@@ -112,12 +113,12 @@ export async function Users({ ctx }: { ctx: Ctx }) {
           {visible.map((u) => (
             <details key={u.id} className="px-4 py-2.5">
               <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2">
-                <span><b>{u.name}</b> <span className="muted">· {u.email} · {u.role}</span> {u.status !== "active" && <Badge tone="rose">Paused</Badge>} {u.on_leave && <Badge tone="amber">On leave</Badge>}</span>
+                <span><b>{u.name}</b> <span className="muted">· {u.email} · {u.role}</span> {u.status !== "active" && <Badge tone="rose">Paused</Badge>} {u.totp_enabled && <Badge tone="green">2FA</Badge>} {u.on_leave && <Badge tone="amber">On leave</Badge>}</span>
                 <span className="muted text-xs">{(u.branch_ids as string[]).length ? ctx.branches.filter((b) => u.branch_ids.includes(b.id)).map((b) => b.name).join(", ") : "All branches"} · last sign-in {u.last_login ? rel(u.last_login) : "never"} · edit ▾</span>
               </summary>
               <div className="mt-3 space-y-2 rounded-md bg-slate-50 p-3">
                 <Form u={u} />
-                {u.id !== ctx.user.id && <form action={userAction} className="flex gap-2"><input type="hidden" name="id" value={u.id} />{u.status === "active" ? <button name="what" value="pause" className="btn btn-sm btn-danger">Pause and sign out</button> : <button name="what" value="activate" className="btn btn-sm">Reactivate</button>}<button name="what" value="reset" className="btn btn-sm">Reset password</button></form>}
+                {u.id !== ctx.user.id && <form action={userAction} className="flex gap-2"><input type="hidden" name="id" value={u.id} />{u.status === "active" ? <button name="what" value="pause" className="btn btn-sm btn-danger">Pause and sign out</button> : <button name="what" value="activate" className="btn btn-sm">Reactivate</button>}<button name="what" value="reset" className="btn btn-sm">Reset password</button>{u.totp_enabled && <button name="what" value="reset2fa" className="btn btn-sm">Reset two-factor</button>}</form>}
               </div>
             </details>
           ))}

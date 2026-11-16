@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/util";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireCtx, scopeSql } from "@/lib/auth";
@@ -16,6 +17,7 @@ const DOC_TEXT: Record<string, string> = { pending: "Not received", uploaded: "R
 export default async function ApplicationPage({ params }: { params: Promise<{ id: string }> }) {
   const ctx = await requireCtx("applications");
   const { id } = await params;
+  if (!isUuid(id)) notFound();
   const ps: any[] = [];
   const scope = scopeSql(ctx, ps, "e", false);
   ps.push(id);

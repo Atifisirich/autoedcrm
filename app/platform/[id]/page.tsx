@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/util";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requirePlatform } from "@/lib/auth";
@@ -14,6 +15,7 @@ const FLAGS: [string, string][] = [["ai_summary", "AI summary on the 360 page"],
 export default async function TenantPage({ params }: { params: Promise<{ id: string }> }) {
   const me = await requirePlatform();
   const { id } = await params;
+  if (!isUuid(id)) notFound();
   const t = await one("select * from tenants where id=$1", [id]);
   if (!t) notFound();
   const [c, users, ledger, tickets, grants] = await Promise.all([

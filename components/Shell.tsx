@@ -5,6 +5,23 @@ import { useActionState, useEffect, useRef, useState, type ReactNode } from "rea
 import { quickAdd } from "@/app/actions/leads";
 import { markNotificationsRead } from "@/app/actions/session";
 
+/** Phone layout: the sidebar becomes a drawer opened from the top bar. */
+export function MenuButton() {
+  const path = usePathname();
+  useEffect(() => { setNav(false); }, [path]);
+  useEffect(() => {
+    const scrim = document.getElementById("nav-scrim");
+    const close = () => setNav(false);
+    scrim?.addEventListener("click", close);
+    return () => scrim?.removeEventListener("click", close);
+  }, []);
+  return <button type="button" onClick={() => setNav(true)} className="btn px-2.5 md:hidden" aria-label="Open menu">☰</button>;
+}
+function setNav(open: boolean) {
+  document.getElementById("sidebar")?.classList.toggle("-translate-x-full", !open);
+  document.getElementById("nav-scrim")?.classList.toggle("hidden", !open);
+}
+
 export function NavLink({ href, children, badge }: { href: string; children: ReactNode; badge?: number }) {
   const path = usePathname();
   const on = href === "/" ? path === "/" : path.startsWith(href);
@@ -166,7 +183,7 @@ function Palette({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 type Note = { id: string; title: string; link: string | null; category: string; read: boolean; when: string };
 
-export function TopBar({ data, notes, unread, children }: { data: QuickAddData; notes: Note[]; unread: number; children: ReactNode }) {
+export function TopBar({ data, notes, unread, children, menu }: { data: QuickAddData; notes: Note[]; unread: number; children: ReactNode; menu?: ReactNode }) {
   const [add, setAdd] = useState(false);
   const [pal, setPal] = useState(false);
   const [bell, setBell] = useState(false);
@@ -181,19 +198,20 @@ export function TopBar({ data, notes, unread, children }: { data: QuickAddData; 
     return () => window.removeEventListener("keydown", onKey);
   }, [data.canCreate]);
   return (
-    <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-slate-200 bg-white px-4 py-2">
+    <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-slate-200 bg-white px-3 py-2 sm:px-4">
+      {menu}
       <button onClick={() => setPal(true)} className="flex min-w-0 flex-1 items-center justify-between rounded-md border border-slate-300 bg-slate-50 px-3 py-1.5 text-left text-slate-500 hover:bg-white md:max-w-md">
-        <span className="truncate">Search or jump to…</span><kbd className="rounded border border-slate-300 bg-white px-1.5 text-[11px]">Ctrl K</kbd>
+        <span className="truncate">Search…</span><kbd className="hidden rounded border border-slate-300 bg-white px-1.5 text-[11px] sm:inline">Ctrl K</kbd>
       </button>
       <div className="ml-auto flex items-center gap-2">
-        {children}
-        {data.canCreate && <button onClick={() => setAdd(true)} className="btn btn-primary" title="Shortcut: N">+ Quick add</button>}
+        <div className="hidden items-center gap-2 md:flex">{children}</div>
+        {data.canCreate && <button onClick={() => setAdd(true)} className="btn btn-primary" title="Shortcut: N" aria-label="Quick add enquiry">+<span className="hidden sm:inline"> Quick add</span></button>}
         <div className="relative">
           <button onClick={() => setBell((b) => !b)} className="btn relative" aria-label={`Notifications, ${unread} unread`}>
-            Alerts{unread > 0 && <span className="rounded-full bg-rose-600 px-1.5 text-[11px] font-semibold text-white">{unread}</span>}
+            <span className="hidden sm:inline">Alerts</span><span className="sm:hidden" aria-hidden>🔔</span>{unread > 0 && <span className="rounded-full bg-rose-600 px-1.5 text-[11px] font-semibold text-white">{unread}</span>}
           </button>
           {bell && (
-            <div className="card absolute right-0 mt-1 w-96 shadow-lg">
+            <div className="card absolute right-0 mt-1 w-[min(24rem,calc(100vw-1.5rem))] shadow-lg">
               <div className="card-h"><span>Notifications</span>{unread > 0 && <form action={markNotificationsRead}><button className="link text-xs">Mark all read</button></form>}</div>
               <ul className="max-h-96 overflow-y-auto">
                 {notes.map((n) => (

@@ -4,7 +4,7 @@ import { one, q } from "@/lib/db";
 import { rel } from "@/lib/fmt";
 import { canCreateLeads, has, leadScope } from "@/lib/perm";
 import { tick } from "@/lib/workflows";
-import { AutoSelect, NavLink, Toast, TopBar } from "@/components/Shell";
+import { AutoSelect, MenuButton, NavLink, Toast, TopBar } from "@/components/Shell";
 import { logoutAction, setBranch, setYear } from "@/app/actions/session";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +34,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   ] as const;
   return (
     <div className="flex min-h-full">
-      <aside className="sticky top-0 flex h-screen w-52 shrink-0 flex-col bg-brand-900 p-3">
+      <div id="nav-scrim" className="fixed inset-0 z-30 hidden bg-slate-900/40 md:hidden" aria-hidden />
+      <aside id="sidebar" className="fixed inset-y-0 left-0 z-40 flex h-screen w-60 shrink-0 -translate-x-full flex-col overflow-y-auto bg-brand-900 p-3 transition-transform md:sticky md:top-0 md:w-52 md:translate-x-0">
         <Link href="/" className="mb-4 flex items-center gap-2 px-2 text-base font-semibold text-white">
           <span className="flex h-7 w-7 items-center justify-center rounded-md bg-white text-brand-700">A</span> AutoED CRM
         </Link>
@@ -42,6 +43,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {nav.filter((n) => n[2]).map(([href, label, , badge]) => <NavLink key={href} href={href} badge={badge}>{label}</NavLink>)}
           {canCreateLeads(p) && <NavLink href="/walkin">Walk-in desk</NavLink>}
         </nav>
+        <div className="mt-4 space-y-2 border-t border-white/15 px-1 pt-3 md:hidden">
+          <form action={setYear}><AutoSelect name="year" label="Academic year" value={ctx.yearId} options={ctx.years.map((y) => ({ value: y.id, label: `${y.name}${y.status === "closed" ? " (closed)" : ""}` }))} /></form>
+          {ctx.branches.length > 1 && <form action={setBranch}><AutoSelect name="branch" label="Branch" value={ctx.branchId ?? ""} options={[{ value: "", label: "All branches" }, ...ctx.branches.map((b) => ({ value: b.id, label: b.name }))]} /></form>}
+        </div>
         <div className="mt-auto space-y-0.5 border-t border-white/15 pt-2">
           {(has(p, "admin") || has(p, "workflows")) && <NavLink href="/admin">⚙ Admin console</NavLink>}
           <div className="px-3 pt-2 text-xs text-brand-100">
@@ -58,13 +63,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           data={{ branches: ctx.branches.map((b) => ({ id: b.id, name: b.name })), grades: s.grades ?? [], boards: s.boards ?? [], sources: sources as any, branchId: ctx.branchId, canCreate: canCreateLeads(p) }}
           notes={notes.map((n) => ({ id: n.id, title: n.title, link: n.link, category: n.category, read: n.read, when: rel(n.created_at) }))}
           unread={unread!.n}
+          menu={<MenuButton />}
         >
           <form action={setYear}><AutoSelect name="year" label="Academic year" value={ctx.yearId} options={ctx.years.map((y) => ({ value: y.id, label: `${y.name}${y.status === "closed" ? " (closed)" : ""}` }))} /></form>
           {ctx.branches.length > 1 && (
             <form action={setBranch}><AutoSelect name="branch" label="Branch" value={ctx.branchId ?? ""} options={[{ value: "", label: "All branches" }, ...ctx.branches.map((b) => ({ value: b.id, label: b.name }))]} /></form>
           )}
         </TopBar>
-        <main className="p-5">{children}</main>
+        <main className="p-3 sm:p-5">{children}</main>
       </div>
       <Toast />
     </div>

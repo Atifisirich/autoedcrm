@@ -1,3 +1,4 @@
+import { isUuid } from "@/lib/util";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireCtx, scopeSql } from "@/lib/auth";
@@ -17,6 +18,7 @@ const TYPE_LABEL: Record<string, string> = { call: "Call", whatsapp: "WhatsApp",
 export default async function HouseholdPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Record<string, string | undefined>> }) {
   const ctx = await requireCtx("leads");
   const { id } = await params;
+  if (!isUuid(id)) notFound();
   const sp = await searchParams;
   const t = ctx.tenantId;
   const ps: any[] = [];

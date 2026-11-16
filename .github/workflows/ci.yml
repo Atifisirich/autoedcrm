@@ -1,0 +1,22 @@
+# Runs the test suite and a production build of the web app on every push.
+name: Web CI
+
+on:
+  push:
+    paths-ignore: ["mobile/**", "**.md"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npm test
+      - run: npx next build

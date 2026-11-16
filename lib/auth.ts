@@ -145,8 +145,9 @@ export function scopeSql(ctx: Ctx, params: any[], alias = "e", useHeaderBranch =
   const scope = leadScope(ctx.perms);
   if (scope === "none") sql += " and false";
   if (scope === "own") {
+    // Own records, plus those of anyone who reports to this user, directly or further down (RB-02).
     params.push(ctx.user.id);
-    sql += ` and ${alias}.owner_id=$${params.length}`;
+    sql += ` and ${alias}.owner_id in (with recursive team as (select id from users where id=$${params.length} union select u.id from users u join team on u.reports_to=team.id) select id from team)`;
   }
   if (ctx.branchIds.length) {
     params.push(ctx.branchIds);

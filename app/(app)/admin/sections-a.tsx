@@ -27,6 +27,9 @@ export async function Org({ ctx }: { ctx: Ctx }) {
           <Field label="Closure reasons (one per line)"><textarea name="closure_reasons" rows={6} defaultValue={(s.closure_reasons ?? []).join("\n")} className="input" /></Field>
           <Field label="Document checklist (one per line)"><textarea name="doc_types" rows={6} defaultValue={(s.doc_types ?? []).join("\n")} className="input" /></Field>
           <Field label="Privacy notice shown on forms"><textarea name="privacy_notice" rows={6} defaultValue={s.privacy_notice ?? "We use these details only to respond to your admission enquiry. You can ask us to correct or delete them at any time."} className="input" /></Field>
+          <Field label="Quiet hours: no automated messages from (hour, 0-23)"><input name="quiet_from" type="number" min={0} max={23} defaultValue={s.quiet_hours?.from ?? 21} className="input" /></Field>
+          <Field label="… until (hour, 0-23)" hint="Automated messages due in this window wait until it ends. India time."><input name="quiet_to" type="number" min={0} max={23} defaultValue={s.quiet_hours?.to ?? 8} className="input" /></Field>
+          <Field label="Most automated messages per family per day" hint="Messages sent by staff and campaigns do not count."><input name="max_auto_per_day" type="number" min={1} defaultValue={s.max_auto_per_day ?? 4} className="input" /></Field>
           <label className="flex items-center gap-2"><input type="checkbox" name="reopen" defaultChecked={s.reopen_on_reenquiry !== false} /> Re-open a closed enquiry when the family enquires again</label>
           <label className="flex items-center gap-2"><input type="checkbox" name="call_recording" defaultChecked={!!s.call_recording} /> Record calls (with announcement) once telephony is connected</label>
           <div className="md:col-span-3"><button className="btn btn-primary">Save organisation settings</button></div>

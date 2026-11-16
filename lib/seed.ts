@@ -64,7 +64,7 @@ export const defaultSettings = (pack: string) => ({
   fees: { registration: 1500, admission: 25000 },
   modules: { visits: true, applications: true, payments: true, campaigns: true, workflows: true },
   app_no_prefix: "APP", receipt_prefix: "RCPT", next_app_no: 1, next_receipt_no: 1,
-  call_recording: false, quiet_hours: { from: 21, to: 8 },
+  call_recording: false, quiet_hours: { from: 21, to: 8 }, max_auto_per_day: 4,
 });
 
 export type NewTenant = { name: string; subdomain: string; plan?: string; pack?: string; region?: string; status?: string; adminName: string; adminEmail: string; adminPassword?: string; branchName?: string; city?: string; wallet?: number };

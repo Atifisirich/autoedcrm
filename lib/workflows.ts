@@ -138,7 +138,7 @@ async function runSteps(run: Row, wf: Row, from: number) {
           res = await sendMessage(tenantId, { householdId: e.household_id, enquiryId: e.id, channel: fb, body: fbTpl ? renderTemplate(fbTpl.body, vars) : body, template: fbTpl, vars });
           used = fb;
         }
-        say(i, res.status !== "failed" ? `Sent "${s.template}" on ${used}.` : `Could not send "${s.template}": ${res.reason}`, res.status !== "failed");
+        say(i, res.status === "queued" ? `"${s.template}": ${res.reason}` : res.status !== "failed" ? `Sent "${s.template}" on ${used}.` : `Could not send "${s.template}": ${res.reason}`, res.status !== "failed");
       } else if (s.type === "task") {
         if (test) { say(i, `Would create task "${s.title}" for ${e.owner_name}, due in ${fmtMins(s.dueMins)}.`); continue; }
         await addTask(tenantId, { enquiryId: e.id, title: s.title, type: s.taskType, dueAt: new Date(Date.now() + s.dueMins * 60000), priority: s.priority });
@@ -200,7 +200,12 @@ export async function runDueJobs(tenantId: string): Promise<number> {
   for (const j of jobs) {
     let result = "done";
     try {
-      if (j.kind === "workflow_resume") {
+      if (j.kind === "send_message") {
+        const { sendMessage } = await import("./core");
+        const tpl = j.payload.templateId ? await one("select * from templates where id=$1", [j.payload.templateId]) : null;
+        const r = await sendMessage(tenantId, { ...j.payload, template: tpl, deferred: true });
+        result = r.status === "failed" ? "not sent: " + r.reason : "sent";
+      } else if (j.kind === "workflow_resume") {
         const run = await one("select * from workflow_runs where id=$1", [j.payload.runId]);
         const wf = run && (await one("select * from workflows where id=$1", [run.workflow_id]));
         if (!run || !wf || run.status !== "running") result = "skipped";

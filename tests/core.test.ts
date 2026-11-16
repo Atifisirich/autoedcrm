@@ -228,3 +228,39 @@ describe("csv", () => {
     expect(parseCsv('Student name,Mobile\r\n"Rao, Aarav",9876543210\n"He said ""hi""",1')).toEqual([["Student name", "Mobile"], ["Rao, Aarav", "9876543210"], ['He said "hi"', "1"]]);
   });
 });
+
+describe("message safeguards and team scope", () => {
+  it("MSG-05: automated messages wait for quiet hours to end, and are capped per family per day", async () => {
+    const { hourIST } = await import("@/lib/core");
+    const h = hourIST();
+    const r = await lead({ studentName: "Quiet Hours" });
+    if (!r.ok) throw new Error("capture failed");
+    await q("update tenants set settings = settings || $2::jsonb where id=$1", [t, { quiet_hours: { from: h, to: (h + 1) % 24 } }]);
+    const held = await sendMessage(t, { householdId: r.householdId, enquiryId: r.enquiryId, channel: "sms", body: "Automated hello" });
+    expect(held.status).toBe("queued");
+    expect((await one("select count(*)::int n from jobs where tenant_id=$1 and kind='send_message' and payload->>'householdId'=$2", [t, r.householdId]))!.n).toBe(1);
+    const manual = await sendMessage(t, { householdId: r.householdId, enquiryId: r.enquiryId, channel: "sms", body: "Hello from staff", actorId: users[0] });
+    expect(manual.status).toBe("delivered");
+    await q("update tenants set settings = settings || $2::jsonb where id=$1", [t, { quiet_hours: { from: (h + 2) % 24, to: (h + 3) % 24 }, max_auto_per_day: 1 }]);
+    const r2 = await lead({ studentName: "Cap Check" });
+    if (!r2.ok) throw new Error("capture failed");
+    await q("delete from messages where household_id=$1", [r2.householdId]);
+    expect((await sendMessage(t, { householdId: r2.householdId, enquiryId: r2.enquiryId, channel: "sms", body: "one" })).status).toBe("delivered");
+    const second = await sendMessage(t, { householdId: r2.householdId, enquiryId: r2.enquiryId, channel: "sms", body: "two" });
+    expect(second.status).toBe("failed");
+    expect(second.reason).toMatch(/already got 1 automated/);
+    await q("update tenants set settings = settings || $2::jsonb where id=$1", [t, { max_auto_per_day: 4 }]);
+  });
+
+  it("RB-02: someone limited to their own records also sees their team's", async () => {
+    const { scopeSql } = await import("@/lib/auth");
+    const lead1 = await one("select id from users where tenant_id=$1 and id=$2", [t, users[1]]);
+    await q("update users set reports_to=$2 where id=$1", [users[1], users[0]]);
+    const ctx: any = { tenantId: t, perms: { leads: "O" }, user: { id: users[0] }, branchIds: [], branchId: null };
+    const params: any[] = [];
+    const where = scopeSql(ctx, params);
+    const seen = await q(`select distinct e.owner_id from enquiries e where ${where}`, params);
+    expect(seen.map((x) => x.owner_id).sort()).toEqual([users[0], lead1!.id].sort());
+    await q("update users set reports_to=null where id=$1", [users[1]]);
+  });
+});

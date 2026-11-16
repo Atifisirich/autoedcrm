@@ -24,7 +24,9 @@ export async function saveOrg(fd: FormData) {
   const s = { ...ctx.tenant.settings, legal_name: str(fd, "legal_name"), gstin: str(fd, "gstin"), first_response_mins: Number(str(fd, "first_response_mins")) || 30, reopen_on_reenquiry: fd.get("reopen") === "on", call_recording: fd.get("call_recording") === "on",
     fees: { registration: Number(str(fd, "fee_registration")) || 0, admission: Number(str(fd, "fee_admission")) || 0 }, app_no_prefix: str(fd, "app_no_prefix") || "APP", receipt_prefix: str(fd, "receipt_prefix") || "RCPT",
     closure_reasons: str(fd, "closure_reasons").split("\n").map((x) => x.trim()).filter(Boolean), doc_types: str(fd, "doc_types").split("\n").map((x) => x.trim()).filter(Boolean),
-    privacy_notice: str(fd, "privacy_notice") };
+    privacy_notice: str(fd, "privacy_notice"),
+    quiet_hours: { from: Math.min(23, Math.max(0, Number(str(fd, "quiet_from")) || 21)), to: Math.min(23, Math.max(0, Number(str(fd, "quiet_to")) || 8)) },
+    max_auto_per_day: Math.max(1, Number(str(fd, "max_auto_per_day")) || 4) };
   await q("update tenants set name=$2, settings=$3, branding=$4 where id=$1", [ctx.tenantId, str(fd, "name") || ctx.tenant.name, s, { ...ctx.tenant.branding, color: str(fd, "color") || "#0f6e6e" }]);
   await log(ctx, "organisation", "Updated organisation settings", ctx.tenant.settings, s);
   await flash("Organisation settings saved.");

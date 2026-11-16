@@ -413,10 +413,28 @@ const CHANNEL_NAME: Record<string, string> = { whatsapp: "WhatsApp", sms: "SMS",
  */
 export async function sendMessage(
   tenantId: string,
-  m: { householdId: string; enquiryId?: string | null; channel: string; body: string; actorId?: string | null; campaignId?: string | null; template?: Row | null; vars?: Record<string, string | null | undefined> },
-): Promise<{ status: "sent" | "delivered" | "failed"; reason?: string }> {
+  m: { householdId: string; enquiryId?: string | null; channel: string; body: string; actorId?: string | null; campaignId?: string | null; template?: Row | null; vars?: Record<string, string | null | undefined>; deferred?: boolean },
+): Promise<{ status: "sent" | "delivered" | "queued" | "failed"; reason?: string }> {
   const g = await one("select * from guardians where tenant_id=$1 and household_id=$2 order by is_primary desc limit 1", [tenantId, m.householdId]);
   const tenant = await one("select wallet_balance from tenants where id=$1", [tenantId]);
+  // Automated messages (workflows) respect the school's quiet hours and a daily cap per family (MSG-05).
+  if (!m.actorId && !m.campaignId && !m.deferred) {
+    const settings = await tenantSettings(tenantId);
+    const quiet = settings.quiet_hours ?? { from: 21, to: 8 };
+    const h = hourIST();
+    const inQuiet = quiet.from > quiet.to ? h >= quiet.from || h < quiet.to : h >= quiet.from && h < quiet.to;
+    if (inQuiet) {
+      const wait = ((quiet.to - h + 24) % 24 || 24) * 3600e3 - new Date().getMinutes() * 60e3;
+      await insert("jobs", { tenant_id: tenantId, run_at: new Date(Date.now() + wait), kind: "send_message", payload: { ...m, templateId: m.template?.id ?? null, template: undefined } });
+      return { status: "queued", reason: `Held until ${quiet.to}:00 because of the school's quiet hours.` };
+    }
+    const cap = Number(settings.max_auto_per_day ?? 4);
+    const today = await one(
+      "select count(*)::int n from messages where tenant_id=$1 and household_id=$2 and direction='out' and sender_id is null and campaign_id is null and status<>'failed' and created_at > now() - interval '24 hours'",
+      [tenantId, m.householdId],
+    );
+    if (today!.n >= cap) return { status: "failed", reason: `Skipped: this family already got ${cap} automated messages in the last 24 hours.` };
+  }
   const { waConfig, waSendTemplate, waSendText } = await import("./meta");
   const live = m.channel === "whatsapp" ? await waConfig(tenantId) : null;
   const cost = live ? 0 : MESSAGE_COST[m.channel] ?? 0; // the school's own Meta account bills the school directly

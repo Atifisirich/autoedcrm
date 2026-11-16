@@ -47,6 +47,24 @@ export async function audit(tenantId: string | null, actor: Actor, action: strin
 
 export async function notify(tenantId: string, userId: string, category: string, title: string, link?: string) {
   await insert("notifications", { tenant_id: tenantId, user_id: userId, category, title, link: link ?? null });
+  await pushToPhones(userId, title, link);
+}
+
+/** Sends the alert to the user's Android app through Expo's push service. Never blocks or fails the caller. */
+async function pushToPhones(userId: string, title: string, link?: string) {
+  if (process.env.PUSH_DISABLED === "1") return;
+  const tokens = await q("select token from push_tokens where user_id=$1", [userId]).catch(() => []);
+  if (!tokens.length) return;
+  try {
+    const r = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST", headers: { "content-type": "application/json", accept: "application/json" },
+      body: JSON.stringify(tokens.map((t) => ({ to: t.token, title: "AutoED", body: title, data: { link: link ?? "/" }, sound: "default", channelId: "default" }))),
+      signal: AbortSignal.timeout(4000),
+    });
+    const res = await r.json().catch(() => null);
+    // Expo reports uninstalled apps per token; forget those so we stop sending to them.
+    (res?.data ?? []).forEach((d: any, i: number) => { if (d?.details?.error === "DeviceNotRegistered") q("delete from push_tokens where token=$1", [tokens[i].token]).catch(() => {}); });
+  } catch { /* push is best effort */ }
 }
 
 /** Admission heads and admins who should hear about escalations for a branch. */

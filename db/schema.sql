@@ -563,6 +563,16 @@ create table if not exists meta_leads (
   created_at timestamptz not null default now()
 );
 
+alter table sessions add column if not exists device text;
+
+-- Push notification tokens from the mobile app (Expo push service).
+create table if not exists push_tokens (
+  token text primary key,
+  user_id uuid not null references users(id) on delete cascade,
+  platform text,
+  updated_at timestamptz not null default now()
+);
+
 -- When hosted on Supabase the public schema is reachable through the auto-generated API.
 -- The app talks to Postgres directly, so lock every table it owns down for API roles.
 do $$

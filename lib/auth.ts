@@ -1,4 +1,4 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import crypto from "node:crypto";
@@ -42,6 +42,27 @@ export async function login(email: string, password: string): Promise<string | n
   return u.platform_role ? "/platform" : "/";
 }
 
+/**
+ * Mobile app sign-in: same checks and lockout as the web, but returns a bearer token instead of
+ * setting a cookie. Platform staff cannot use the school app.
+ */
+export async function loginForToken(email: string, password: string, device: string): Promise<{ token: string } | { error: string; status: number }> {
+  const key = email.trim().toLowerCase();
+  const f = fails.get(key);
+  if (f && f.n >= 5 && Date.now() - f.t < 10 * 60000) return { error: "Too many wrong attempts. Wait ten minutes and try again.", status: 429 };
+  const u = await one("select * from users where lower(email)=$1 and status='active'", [key]);
+  if (!u || !(await bcrypt.compare(password, u.password_hash))) {
+    fails.set(key, { n: f && Date.now() - f.t < 10 * 60000 ? f.n + 1 : 1, t: Date.now() });
+    return { error: "That email and password do not match an active account.", status: 401 };
+  }
+  if (!u.tenant_id) return { error: "AutoED staff accounts cannot use the school app.", status: 403 };
+  fails.delete(key);
+  const token = crypto.randomBytes(32).toString("hex");
+  await q("insert into sessions (token,user_id,expires_at,device) values ($1,$2, now() + interval '30 days', $3)", [token, u.id, device.slice(0, 120) || "Mobile app"]);
+  await q("update users set last_login=now() where id=$1", [u.id]);
+  return { token };
+}
+
 export async function startSession(userId: string, impersonatorId?: string, hours = 24 * 7) {
   const token = crypto.randomBytes(32).toString("hex");
   await q("insert into sessions (token,user_id,impersonator_id,expires_at) values ($1,$2,$3, now() + ($4 || ' hours')::interval)", [token, userId, impersonatorId ?? null, String(hours)]);
@@ -50,13 +71,21 @@ export async function startSession(userId: string, impersonatorId?: string, hour
 
 export async function logout() {
   const jar = await cookies();
-  const token = jar.get(COOKIE)?.value;
+  const token = await sessionToken();
   if (token) await q("delete from sessions where token=$1", [token]);
   jar.delete(COOKIE);
 }
 
+/** Browser sessions use the cookie; the mobile app sends the same token as "Authorization: Bearer". */
+async function sessionToken(): Promise<string | undefined> {
+  const fromCookie = (await cookies()).get(COOKIE)?.value;
+  if (fromCookie) return fromCookie;
+  const h = (await headers()).get("authorization");
+  return h?.startsWith("Bearer ") ? h.slice(7).trim() : undefined;
+}
+
 const sessionUser = cache(async () => {
-  const token = (await cookies()).get(COOKIE)?.value;
+  const token = await sessionToken();
   if (!token) return null;
   const s = await one("select s.impersonator_id, u.* from sessions s join users u on u.id=s.user_id where s.token=$1 and s.expires_at>now() and u.status='active'", [token]);
   return s;
